@@ -6,7 +6,6 @@
     <title>Project Task Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -16,11 +15,11 @@
         // You can find these details in your Firebase Console under Project settings (⚙️ icon) > Project settings > Your apps.
         const firebaseConfig = {
             apiKey: "AIzaSyBzxnDdBMGdfMfhwylMAkgzIwwRb-jaAaA", // Your provided API Key
-            authDomain: "project-task-manager-5663f.firebaseapp.com",          // e.g., "your-project-id.firebaseapp.com"
+            authDomain: "project-task-manager-5663f.firebaseapp.com",        // e.g., "your-project-id.firebaseapp.com"
             projectId: "project-task-manager-5663f",            // e.g., "your-project-id"
             storageBucket: "project-task-manager-5663f.firebasestorage.app",    // e.g., "your-project-id.appspot.com"
             messagingSenderId: "645859250366", // e.g., "1234567890"
-            appId: "1:645859250366:web:41ac92d85f1db0318b0eef"                     // e.g., "1:1234567890:web:abcdef1234567890abcdef" (This is crucial for Firestore paths)
+            appId: "1:645859250366:web:41ac92d85f1db0318b0eef"                   // e.g., "1:1234567890:web:abcdef1234567890abcdef" (This is crucial for Firestore paths)
             // measurementId: "G-XXXXXXXXXX" // Optional: Uncomment and replace if you use Google Analytics
         };
 
@@ -79,8 +78,8 @@
 
                         // Load data (public company details always, private tasks only if logged in)
                         window.loadFirestoreData();
-                        window.renderCompanySections();
-                        window.updateTaskCounts();
+                        window.renderCompanySections(); // Moved to be called after loadFirestoreData
+                        window.updateTaskCounts();     // Moved to be called after loadFirestoreData
                         window.displayUserId();
                     });
                 }
@@ -102,6 +101,8 @@
                 userIdDisplay.textContent = `User ID: ${window.userId || 'N/A'}`;
             }
         }
+        window.displayUserId = displayUserId; // Expose globally
+
 
         /**
          * Loads tasks and company details from Firestore in real-time using onSnapshot.
@@ -154,6 +155,8 @@
                 console.log("No user logged in, private tasks cleared.");
             }
         }
+        window.loadFirestoreData = loadFirestoreData; // Expose globally
+
 
         /**
          * Adds a new task to Firestore.
@@ -175,6 +178,7 @@
                 const docRef = await addDoc(collection(window.db, `artifacts/${appId}/users/${window.userId}/tasks`), newTask);
                 console.log("Task added with ID:", docRef.id);
                 // Explicitly trigger a re-render after successful Firestore operation
+                // Note: onSnapshot should also trigger this, but explicit call ensures it runs
                 window.renderCompanySections();
                 window.updateTaskCounts();
             } catch (e) {
@@ -182,6 +186,8 @@
                 window.showConfirmationModal("Error", "Failed to add task: " + e.message).then(() => {});
             }
         }
+        window.addTaskToFirestore = addTaskToFirestore; // Expose globally
+
 
         /**
          * Updates an existing task in Firestore.
@@ -212,6 +218,8 @@
                 window.showConfirmationModal("Error", "Failed to update task: " + e.message).then(() => {});
             }
         }
+        window.updateTaskInFirestore = updateTaskInFirestore; // Expose globally
+
 
         /**
          * Deletes a task from Firestore.
@@ -240,6 +248,8 @@
                 window.showConfirmationModal("Error", "Failed to delete task: " + e.message).then(() => {});
             }
         }
+        window.deleteTaskFromFirestore = deleteTaskFromFirestore; // Expose globally
+
 
         /**
          * Saves or updates company details in Firestore.
@@ -269,10 +279,10 @@
                 window.showConfirmationModal("Error", "Failed to save company details: " + e.message).then(() => {});
             }
         }
+        window.saveCompanyDetailsToFirestore = saveCompanyDetailsToFirestore; // Expose globally
+
 
         // Expose Firebase functions and variables to the global scope for the second script
-        // Note: `app`, `db`, `auth`, `userId`, `userEmail`, `isAuthReady` are now exposed directly
-        // in `initializeFirebase` *after* they are initialized.
         window.appId = appId;
         window.tasks = tasks; // These references are updated by onSnapshot in loadFirestoreData
         window.companyDetails = companyDetails; // These references are updated by onSnapshot in loadFirestoreData
@@ -297,14 +307,6 @@
         window.onSnapshot = onSnapshot;
         window.query = query;
         window.where = where;
-
-        // Expose the custom Firestore CRUD functions
-        window.addTaskToFirestore = addTaskToFirestore;
-        window.updateTaskInFirestore = updateTaskInFirestore;
-        window.deleteTaskFromFirestore = deleteTaskFromFirestore;
-        window.saveCompanyDetailsToFirestore = saveCompanyDetailsToFirestore;
-        window.loadFirestoreData = loadFirestoreData;
-        window.displayUserId = displayUserId;
 
         // Initialize Firebase when this module script loads
         initializeFirebase();
@@ -394,7 +396,6 @@
             </div>
 
 
-            <!-- Quick Navigation -->
             <div class="mb-8">
                 <h2 class="text-lg font-semibold text-gray-700 mb-3">Jump to Company:</h2>
                 <div class="flex flex-wrap gap-2">
@@ -411,7 +412,6 @@
                 </div>
             </div>
 
-            <!-- Task Summary -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <div class="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
                     <h3 class="text-lg font-semibold text-indigo-800">Total Tasks</h3>
@@ -427,7 +427,6 @@
                 </div>
             </div>
 
-            <!-- Filter -->
             <div class="mb-8">
                 <h2 class="text-lg font-semibold text-gray-700 mb-3">Filter by Status:</h2>
                 <div class="flex flex-wrap gap-3">
@@ -446,13 +445,10 @@
                 </div>
             </div>
 
-            <!-- Company Sections -->
             <div id="company-sections" class="space-y-8">
-                <!-- Company sections will be populated here -->
-            </div>
+                </div>
         </div>
 
-        <!-- Add Task Form -->
         <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
             <h2 class="text-xl font-bold text-gray-800 mb-4" id="task-form-title">Add New Task</h2>
             <form id="add-task-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -499,7 +495,6 @@
             </form>
         </div>
 
-        <!-- Add Company Details Form -->
         <div class="bg-white rounded-xl shadow-lg p-6">
             <h2 class="text-xl font-bold text-gray-800 mb-4">Add/Edit Company Details</h2>
             <form id="company-details-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -546,7 +541,6 @@
         </div>
     </div>
 
-    <!-- Custom Confirmation Modal -->
     <div id="confirmationModal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
@@ -559,7 +553,6 @@
         </div>
     </div>
 
-    <!-- Login/Signup Modal -->
     <div id="auth-modal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
@@ -583,19 +576,19 @@
         // Access global variables and functions exposed by the Firebase import script
         // Note: 'tasks' and 'companyDetails' are local variables in this module,
         // they are updated by the onSnapshot listeners.
-        let tasks = window.tasks;
-        let companyDetails = window.companyDetails;
+        // It's crucial that functions like updateTaskCounts and renderCompanySections
+        // always reference 'window.tasks' and 'window.companyDetails' to get the latest state.
+        let tasks = window.tasks; // This initial assignment might get an empty array. Subsequent calls must use window.tasks.
+        let companyDetails = window.companyDetails; // Same here.
 
         // Re-declare Firebase-related variables and functions here to ensure they are accessible
-        // These are references to the instances exposed on the window object after Firebase init
-        let db = window.db; // This will be assigned correctly when window.onload fires AND initializeFirebase completes
+        let db = window.db;
         let userId = window.userId;
         let userEmail = window.userEmail;
         let isAuthReady = window.isAuthReady;
         let appId = window.appId;
 
         // Firebase functions from the first module
-        // These are the static functions from the Firebase SDK
         const { getFirestore, collection, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } = window;
 
 
@@ -702,13 +695,17 @@
 
         // Update task count summary
         function updateTaskCounts() {
-            const totalCount = tasks.length;
-            const pendingCount = tasks.filter(task => task.status === 'pending').length;
-            const inProgressCount = tasks.filter(task => task.status === 'in-progress').length;
-            const completedCount = tasks.filter(task => task.status === 'completed').length;
+            // === ADDED DEBUG LOGS ===
+            console.log("DEBUG: updateTaskCounts - Current window.tasks:", window.tasks);
+            console.log("DEBUG: updateTaskCounts - window.tasks length:", window.tasks ? window.tasks.length : 0);
+            // ========================
+
+            const totalCount = window.tasks.length;
+            const pendingCount = window.tasks.filter(task => task.status === 'pending' || task.status === 'in-progress').length;
+            const completedCount = window.tasks.filter(task => task.status === 'completed').length;
 
             document.getElementById('total-tasks').textContent = totalCount;
-            document.getElementById('pending-tasks').textContent = pendingCount + inProgressCount;
+            document.getElementById('pending-tasks').textContent = pendingCount;
             document.getElementById('completed-tasks').textContent = completedCount;
         }
         window.updateTaskCounts = updateTaskCounts; // Expose globally
@@ -716,24 +713,46 @@
 
         // Render company sections with their respective tasks
         function renderCompanySections() {
+            // === ADDED DEBUG LOGS ===
+            console.log("DEBUG: renderCompanySections - Current window.tasks:", window.tasks);
+            console.log("DEBUG: renderCompanySections - window.tasks length:", window.tasks ? window.tasks.length : 0);
+            // ========================
+
             const companySections = document.getElementById('company-sections');
             companySections.innerHTML = '';
 
             // Get unique companies from the tasks and predefined options
             const predefinedCompanies = Array.from(companyInput.options).filter(opt => opt.value !== '').map(opt => opt.value);
-            const companiesInTasks = [...new Set(tasks.map(task => task.company))];
+            const companiesInTasks = [...new Set(window.tasks.map(task => task.company))];
             const allCompanies = [...new Set([...predefinedCompanies, ...companiesInTasks])].sort(); // Ensure consistent order
 
             allCompanies.forEach(company => {
+                // === ADDED DEBUG LOGS INSIDE LOOP ===
+                console.log(`DEBUG: renderCompanySections - Processing company: '${company}'`);
+                // ===================================
+                
                 // Filter tasks for this company based on current status filter
-                let companyTasks = tasks.filter(task => task.company === company);
+                let companyTasks = window.tasks.filter(task => {
+                    // Optional: For very deep debugging of the filter itself
+                    // console.log(`  Task in filter: '${task.task}', Company: '${task.company}' (Type: ${typeof task.company}) vs Target: '${company}' (Type: ${typeof company})`);
+                    return task.company === company;
+                });
+
+                // === ADDED DEBUG LOGS ===
+                console.log(`DEBUG: renderCompanySections - companyTasks for '${company}' (after initial filter):`, companyTasks);
+                console.log(`DEBUG: renderCompanySections - companyTasks.length for '${company}':`, companyTasks.length);
+                // ========================
 
                 if (currentStatus !== 'all') {
                     companyTasks = companyTasks.filter(task => task.status === currentStatus);
+                    // === ADDED DEBUG LOG ===
+                    console.log(`DEBUG: renderCompanySections - companyTasks for '${company}' (after status filter):`, companyTasks);
+                    // ========================
                 }
 
                 // If no tasks are found for this company under the current filter AND it's not the 'all' filter, skip rendering the section.
                 if (companyTasks.length === 0 && currentStatus !== 'all') {
+                    console.log("DEBUG: Skipping company section due to no tasks matching filter and filter is not 'all':", company); // ADDED LOG
                     return;
                 }
 
@@ -741,8 +760,7 @@
                 const colors = companyColors[company] || { bg: "bg-gray-50", border: "border-gray-200", header: "from-gray-500 to-gray-700" };
 
                 // Get company details
-                // Company details are stored with company name as ID in public collection
-                const details = companyDetails.find(d => d.id === company) || {
+                const details = window.companyDetails.find(d => d.id === company) || {
                     id: company,
                     contactPerson: '',
                     phone: '',
@@ -784,6 +802,7 @@
                 tasksContent.id = `tasks-${company}`;
 
                 if (companyTasks.length > 0) {
+                    console.log(`DEBUG: Successfully filtered tasks for ${company}. Rendering table.`); // ADDED LOG
                     tasksContent.innerHTML = `
                         <div class="overflow-x-auto p-4">
                             <table class="min-w-full text-sm text-left rounded-lg overflow-hidden">
@@ -797,12 +816,12 @@
                                     </tr>
                                 </thead>
                                 <tbody id="task-table-${company.replace(/\s+/g, '-')}" class="divide-y divide-gray-200">
-                                    <!-- Tasks will be populated here -->
-                                </tbody>
+                                    </tbody>
                             </table>
                         </div>
                     `;
                 } else {
+                    console.log(`DEBUG: No tasks found for ${company} after filters. Rendering empty message.`); // ADDED LOG
                     tasksContent.innerHTML = `
                         <div class="text-center py-8">
                             <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1040,7 +1059,7 @@
             }
 
             const taskId = e.target.dataset.id; // This is the Firestore document ID
-            const taskToEdit = tasks.find(task => task.id === taskId);
+            const taskToEdit = window.tasks.find(task => task.id === taskId); // Use window.tasks here
 
             if (taskToEdit) {
                 companyInput.value = taskToEdit.company;
@@ -1098,12 +1117,12 @@
             }
 
             const taskId = e.target.dataset.id; // This is the Firestore document ID
-            const taskIndex = tasks.findIndex(task => task.id === taskId);
+            const taskIndex = window.tasks.findIndex(task => task.id === taskId); // Use window.tasks here
 
             if (taskIndex > -1) {
                 let newStatus;
                 // Toggle between completed and pending/in-progress
-                if (tasks[taskIndex].status === 'completed') {
+                if (window.tasks[taskIndex].status === 'completed') {
                     newStatus = 'pending'; // Or whatever default non-completed status makes sense
                 } else {
                     newStatus = 'completed';
@@ -1269,7 +1288,7 @@
             userId = window.userId;
             userEmail = window.userEmail;
             isAuthReady = window.isAuthReady;
-            tasks = window.tasks;
+            tasks = window.tasks; // This will get the latest from window.tasks, but onSnapshot continues to update window.tasks directly
             companyDetails = window.companyDetails;
 
 
@@ -1303,8 +1322,15 @@
                 }
             });
 
+            // Set initial deadline input to today's date for better UX
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0'); // January is 0!
+            const dd = String(today.getDate()).padStart(2, '0');
+            deadlineInput.value = `${yyyy}-${mm}-${dd}`;
+
             // Initial display of user ID. This will be updated by onAuthStateChanged later.
-            window.displayUserId();
+            // window.displayUserId(); // This is already called by onAuthStateChanged, no need to duplicate here
         }
     </script>
 </body>
