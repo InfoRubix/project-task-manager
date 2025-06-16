@@ -174,6 +174,9 @@
             try {
                 const docRef = await addDoc(collection(window.db, `artifacts/${appId}/users/${window.userId}/tasks`), newTask);
                 console.log("Task added with ID:", docRef.id);
+                // Explicitly trigger a re-render after successful Firestore operation
+                window.renderCompanySections();
+                window.updateTaskCounts();
             } catch (e) {
                 console.error("Error adding document: ", e);
                 window.showConfirmationModal("Error", "Failed to add task: " + e.message).then(() => {});
@@ -201,6 +204,9 @@
                 const taskRef = doc(window.db, `artifacts/${appId}/users/${window.userId}/tasks`, taskId);
                 await updateDoc(taskRef, updatedFields);
                 console.log("Task updated:", taskId);
+                // Explicitly trigger a re-render after successful Firestore operation
+                window.renderCompanySections();
+                window.updateTaskCounts();
             } catch (e) {
                 console.error("Error updating document: ", e);
                 window.showConfirmationModal("Error", "Failed to update task: " + e.message).then(() => {});
@@ -226,6 +232,9 @@
             try {
                 await deleteDoc(doc(window.db, `artifacts/${appId}/users/${window.userId}/tasks`, taskId));
                 console.log("Task deleted:", taskId);
+                // Explicitly trigger a re-render after successful Firestore operation
+                window.renderCompanySections();
+                window.updateTaskCounts();
             } catch (e) {
                 console.error("Error deleting document: ", e);
                 window.showConfirmationModal("Error", "Failed to delete task: " + e.message).then(() => {});
@@ -253,6 +262,8 @@
                 const docRef = doc(window.db, `artifacts/${appId}/public/data/companyDetails`, companyName);
                 await setDoc(docRef, details, { merge: true }); // Use merge to update existing fields or create new doc
                 console.log("Company details saved/updated in public collection for:", companyName);
+                // Explicitly trigger a re-render after successful Firestore operation
+                window.renderCompanySections();
             } catch (e) {
                 console.error("Error saving company details: ", e);
                 window.showConfirmationModal("Error", "Failed to save company details: " + e.message).then(() => {});
