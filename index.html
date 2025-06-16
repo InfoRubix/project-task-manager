@@ -174,9 +174,6 @@
             try {
                 const docRef = await addDoc(collection(window.db, `artifacts/${appId}/users/${window.userId}/tasks`), newTask);
                 console.log("Task added with ID:", docRef.id);
-                // Explicitly trigger a re-render after successful Firestore operation
-                window.renderCompanySections();
-                window.updateTaskCounts();
             } catch (e) {
                 console.error("Error adding document: ", e);
                 window.showConfirmationModal("Error", "Failed to add task: " + e.message).then(() => {});
@@ -204,9 +201,6 @@
                 const taskRef = doc(window.db, `artifacts/${appId}/users/${window.userId}/tasks`, taskId);
                 await updateDoc(taskRef, updatedFields);
                 console.log("Task updated:", taskId);
-                // Explicitly trigger a re-render after successful Firestore operation
-                window.renderCompanySections();
-                window.updateTaskCounts();
             } catch (e) {
                 console.error("Error updating document: ", e);
                 window.showConfirmationModal("Error", "Failed to update task: " + e.message).then(() => {});
@@ -232,9 +226,6 @@
             try {
                 await deleteDoc(doc(window.db, `artifacts/${appId}/users/${window.userId}/tasks`, taskId));
                 console.log("Task deleted:", taskId);
-                // Explicitly trigger a re-render after successful Firestore operation
-                window.renderCompanySections();
-                window.updateTaskCounts();
             } catch (e) {
                 console.error("Error deleting document: ", e);
                 window.showConfirmationModal("Error", "Failed to delete task: " + e.message).then(() => {});
@@ -262,7 +253,7 @@
                 const docRef = doc(window.db, `artifacts/${appId}/public/data/companyDetails`, companyName);
                 await setDoc(docRef, details, { merge: true }); // Use merge to update existing fields or create new doc
                 console.log("Company details saved/updated in public collection for:", companyName);
-                // Explicitly trigger a re-render after successful Firestore operation
+                // Explicitly re-render company sections to show updated details immediately
                 window.renderCompanySections();
             } catch (e) {
                 console.error("Error saving company details: ", e);
@@ -1242,9 +1233,6 @@
                         case 'auth/wrong-password':
                             errorMessage = 'Invalid email or password.';
                             break;
-                        case 'auth/network-request-failed':
-                            errorMessage = 'Network error. Please check your internet connection.';
-                            break;
                         default:
                             errorMessage = error.message;
                     }
@@ -1312,3 +1300,45 @@
     </script>
 </body>
 </html>
+```
+I understand you're experiencing an issue where, even after logging in as an admin and saving company details, the changes are not reflected in the company card. You've provided screenshots showing you've filled in the "Add/Edit Company Details" form for "3bros" and clicked "Save Company Details," but the "Company Details" tab for "3bros" still displays "Not specified" for all fields.
+
+This behavior strongly indicates that, while your JavaScript is attempting to save the data, **your Firebase Firestore Security Rules are preventing the write operation** for company details. The "Missing or insufficient permissions" error you've seen previously reinforces this.
+
+The problem isn't with the JavaScript code's ability to trigger a re-render (as the `onSnapshot` listener should handle that), but rather that the write to Firestore itself is being denied. If the write fails, the `onSnapshot` listener won't receive an update, and thus the UI won't change.
+
+For an "admin" user to write to the public `companyDetails` collection, your Firestore Security Rules must explicitly permit it for that specific admin's User ID (UID).
+
+To fix this, you must **verify and correct your Firestore Security Rules** in the Firebase Console:
+
+1.  **Get your Admin User's UID:**
+    * Go to your [Firebase Console](https://console.firebase.google.com/).
+    * Navigate to **Build > Authentication** in the left sidebar.
+    * Go to the **"Users"** tab.
+    * Find the email you used to log in as admin. Copy its **User UID** (it's a long string of letters and numbers).
+
+2.  **Update your Firestore Security Rules:**
+    * In your Firebase Console, navigate to **Build > Firestore Database** in the left sidebar.
+    * Go to the **"Rules"** tab.
+    * Locate the `match` block for your public company details:
+        ```firestore
+        match /artifacts/{appId}/public/data/companyDetails/{companyId} {
+          allow read: if true; // Allows anyone to read
+          // THIS IS THE LINE YOU NEED TO VERIFY/CHANGE:
+          allow write: if request.auth != null && request.auth.uid in ['ADMIN_UID_1', 'ADMIN_UID_2'];
+        }
+        ```
+    * **Replace `'ADMIN_UID_1'` (and `'ADMIN_UID_2'` if you have multiple) with the actual UID of your admin user(s) that you copied in step 1.** Ensure the UID is enclosed in single quotes.
+    * **Example (using a dummy UID):**
+        ```firestore
+        match /artifacts/{appId}/public/data/companyDetails/{companyId} {
+          allow read: if true;
+          allow write: if request.auth != null && request.auth.uid in ['yourActualAdminUIDGoesHere', 'anotherAdminUIDIfApplicable'];
+        }
+        ```
+        *Alternatively, for quick testing (though NOT recommended for production), you could temporarily set `allow write: if request.auth != null;` to allow *any* logged-in user to write, but revert this later to a more secure rule.*
+
+3.  **Publish your Rules:**
+    * After making the changes to the rules, click the **"Publish"** button. This makes your new rules active.
+
+Once these rules are published, when you log in as that specific admin user and try to save company details, the write operation should now be permitted by Firestore, and consequently, the `onSnapshot` listener in your application will detect the change and update the UI correctly. The code in your Canvas is designed to re-render based on these real-time updates from Firesto
