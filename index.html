@@ -15,14 +15,14 @@
         // --- IMPORTANT: Replace the placeholder values below with your ACTUAL Firebase project configuration ---
         // You can find these details in your Firebase Console under Project settings (⚙️ icon) > Project settings > Your apps.
         const firebaseConfig = {
-    apiKey: "AIzaSyBzxnDdBMGdfMfhwylMAkgzIwwRb-jaAaA",
-    authDomain: "project-task-manager-5663f.firebaseapp.com",
-    projectId: "project-task-manager-5663f",
-    storageBucket: "project-task-manager-5663f.firebasestorage.app",
-    messagingSenderId: "645859250366",
-    appId: "1:645859250366:web:41ac92d85f1db0318b0eef",
-    measurementId: "G-3R195P6NHD" // measurementId is optional and can be omitted if you're not using Analytics
-};
+            apiKey: "AIzaSyBzxnDdBMGdfMfhwylMAkgzIwwRb-jaAaA", // Your provided API Key
+            authDomain: "project-task-manager-5663f.firebaseapp.com",          // e.g., "your-project-id.firebaseapp.com"
+            projectId: "project-task-manager-5663f",            // e.g., "your-project-id"
+            storageBucket: "project-task-manager-5663f.firebasestorage.app",    // e.g., "your-project-id.appspot.com"
+            messagingSenderId: "645859250366", // e.g., "1234567890"
+            appId: "1:645859250366:web:41ac92d85f1db0318b0eef"                     // e.g., "1:1234567890:web:abcdef1234567890abcdef" (This is crucial for Firestore paths)
+            // measurementId: "G-XXXXXXXXXX" // Optional: Uncomment and replace if you use Google Analytics
+        };
 
         // For public deployment, `__app_id` and `__firebase_config` are not available.
         // We use the appId from the hardcoded config for Firestore paths.
@@ -41,30 +41,42 @@
                 if (!app) { // Initialize app only once
                     app = initializeApp(firebaseConfig);
                     db = getFirestore(app);
-                    auth = getAuth(app);
+                    auth = getAuth(app); // Auth instance obtained from the initialized app
+
+                    // Expose the initialized Firebase instances to the window object
+                    // This ensures they are available for the second script block after initialization.
+                    window.app = app;
+                    window.db = db;
+                    window.auth = auth;
+
 
                     onAuthStateChanged(auth, async (user) => {
                         if (user) {
                             userId = user.uid;
                             userEmail = user.email || 'Guest User';
                             console.log("Authenticated with user ID:", userId, "Email:", userEmail);
-                            // Update UI immediately
-                            window.userEmailDisplay.textContent = userEmail;
-                            window.logoutBtn.classList.remove('hidden');
-                            window.loginBtn.classList.add('hidden');
-                            window.signupBtn.classList.add('hidden');
+                            // Update UI elements exposed by the second script
+                            if (window.userEmailDisplay) window.userEmailDisplay.textContent = userEmail;
+                            if (window.logoutBtn) window.logoutBtn.classList.remove('hidden');
+                            if (window.loginBtn) window.loginBtn.classList.add('hidden');
+                            if (window.signupBtn) window.signupBtn.classList.add('hidden');
 
                         } else {
                             console.log("No user signed in.");
                             userId = null;
                             userEmail = null;
-                            // Reset UI for logged out state
-                            window.userEmailDisplay.textContent = '';
-                            window.logoutBtn.classList.add('hidden');
-                            window.loginBtn.classList.remove('hidden');
-                            window.signupBtn.classList.remove('hidden');
+                            // Reset UI elements exposed by the second script for logged out state
+                            if (window.userEmailDisplay) window.userEmailDisplay.textContent = '';
+                            if (window.logoutBtn) window.logoutBtn.classList.add('hidden');
+                            if (window.loginBtn) window.loginBtn.classList.remove('hidden');
+                            if (window.signupBtn) window.signupBtn.classList.remove('hidden');
                         }
-                        isAuthReady = true;
+                        isAuthReady = true; // Mark auth as ready regardless of login status
+                        // Update global variables
+                        window.userId = userId;
+                        window.userEmail = userEmail;
+                        window.isAuthReady = isAuthReady;
+
                         // Load data (public company details always, private tasks only if logged in)
                         window.loadFirestoreData();
                         window.renderCompanySections();
@@ -74,7 +86,7 @@
                 }
             } catch (error) {
                 console.error("Error initializing Firebase:", error);
-                window.showConfirmationModal("Firebase Initialization Error", "Failed to initialize Firebase. Please check your console for errors and ensure your `firebaseConfig` is correct.");
+                window.showConfirmationModal("Firebase Initialization Error", "Failed to initialize Firebase. Please check your console for errors and ensure your `firebaseConfig` is correct. Error: " + error.message);
             }
         }
 
@@ -85,8 +97,9 @@
         // Displays the current user ID and Email on the page
         function displayUserId() {
             const userIdDisplay = document.getElementById('user-id-display');
+            // Ensure userId is accessed from the window object, which is updated by onAuthStateChanged
             if (userIdDisplay) {
-                userIdDisplay.textContent = `User ID: ${userId || 'N/A'}`;
+                userIdDisplay.textContent = `User ID: ${window.userId || 'N/A'}`;
             }
         }
 
@@ -95,44 +108,47 @@
          * Sets up listeners for both collections.
          */
         function loadFirestoreData() {
-            if (!isAuthReady || !db) {
+            // Access db, isAuthReady, userId from the window object, as they are updated by the first script
+            if (!window.isAuthReady || !window.db) {
                 console.log("Firebase not ready. Cannot load Firestore data.");
                 return;
             }
 
             // Always listen for public company details updates
-            const publicCompanyDetailsColRef = collection(db, `artifacts/${appId}/public/data/companyDetails`);
+            const publicCompanyDetailsColRef = collection(window.db, `artifacts/${appId}/public/data/companyDetails`);
             onSnapshot(publicCompanyDetailsColRef, (snapshot) => {
                 companyDetails = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Update the global reference for companyDetails
+                window.companyDetails = companyDetails;
                 console.log("Public Company details loaded/updated from Firestore:", companyDetails);
                 window.renderCompanySections(); // Re-render to show updated details
             }, (error) => {
                 console.error("Error listening to public company details collection:", error);
-                // Inform user if public data isn't accessible due to permissions
                 if (error.code === 'permission-denied') {
-                    window.showConfirmationModal("Permission Denied", "Cannot access public company details. Please ensure your Firebase Security Rules allow read access for this collection.");
+                    window.showConfirmationModal("Permission Denied", "Cannot access public company details. Please ensure your Firebase Security Rules allow read access for this collection (e.g., `allow read: if true;`).");
                 }
             });
 
             // Only listen for private tasks if a user is authenticated (userId is available)
-            if (userId) {
-                const tasksColRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
+            if (window.userId) {
+                const tasksColRef = collection(window.db, `artifacts/${appId}/users/${window.userId}/tasks`);
                 onSnapshot(tasksColRef, (snapshot) => {
                     tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    console.log("Private Tasks loaded/updated from Firestore for user:", userId, tasks);
+                    // Update the global reference for tasks
+                    window.tasks = tasks;
+                    console.log("Private Tasks loaded/updated from Firestore for user:", window.userId, tasks);
                     window.renderCompanySections();
                     window.updateTaskCounts();
                 }, (error) => {
                     console.error("Error listening to private tasks collection:", error);
                     if (error.code === 'permission-denied') {
-                        // This indicates a problem with private task rules for the logged-in user.
-                        // It shouldn't happen if `request.auth.uid == userId` rule is correctly set.
-                        window.showConfirmationModal("Permission Denied", "Cannot access your private tasks. Please check your Firebase Security Rules.");
+                        window.showConfirmationModal("Permission Denied", "Cannot access your private tasks. Please check your Firebase Security Rules for `users/{userId}/tasks` path (e.g., `allow read, write: if request.auth != null && request.auth.uid == userId;`).");
                     }
                 });
             } else {
                 // If no user is logged in, clear private tasks from UI
                 tasks = [];
+                window.tasks = tasks; // Update global reference
                 window.renderCompanySections();
                 window.updateTaskCounts();
                 console.log("No user logged in, private tasks cleared.");
@@ -144,19 +160,19 @@
          * @param {object} newTask - The task object to add.
          */
         async function addTaskToFirestore(newTask) {
-            if (!isAuthReady || !userId || !db) {
+            if (!window.isAuthReady || !window.userId || !window.db) {
                 window.showConfirmationModal("Authentication Required", "Please log in to add tasks.").then(() => {
-                    window.authModal.style.display = 'flex'; // Open login modal
-                    window.authModalTitle.textContent = 'Login to Add Task';
-                    window.authSubmitBtn.textContent = 'Login';
+                    if (window.authModal) window.authModal.style.display = 'flex'; // Open login modal
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Add Task';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
                     window.currentAuthMode = 'login';
-                    window.authForm.reset();
+                    if (window.authForm) window.authForm.reset();
                 });
                 console.error("Firebase not ready or user not authenticated. Cannot add task.");
                 return;
             }
             try {
-                const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/tasks`), newTask);
+                const docRef = await addDoc(collection(window.db, `artifacts/${appId}/users/${window.userId}/tasks`), newTask);
                 console.log("Task added with ID:", docRef.id);
             } catch (e) {
                 console.error("Error adding document: ", e);
@@ -170,19 +186,19 @@
          * @param {object} updatedFields - The fields to update.
          */
         async function updateTaskInFirestore(taskId, updatedFields) {
-            if (!isAuthReady || !userId || !db) {
+            if (!window.isAuthReady || !window.userId || !window.db) {
                 window.showConfirmationModal("Authentication Required", "Please log in to update tasks.").then(() => {
-                    window.authModal.style.display = 'flex';
-                    window.authModalTitle.textContent = 'Login to Update Task';
-                    window.authSubmitBtn.textContent = 'Login';
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Update Task';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
                     window.currentAuthMode = 'login';
-                    window.authForm.reset();
+                    if (window.authForm) window.authForm.reset();
                 });
                 console.error("Firebase not ready or user not authenticated. Cannot update task.");
                 return;
             }
             try {
-                const taskRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId);
+                const taskRef = doc(window.db, `artifacts/${appId}/users/${window.userId}/tasks`, taskId);
                 await updateDoc(taskRef, updatedFields);
                 console.log("Task updated:", taskId);
             } catch (e) {
@@ -196,19 +212,19 @@
          * @param {string} taskId - The ID of the task document to delete.
          */
         async function deleteTaskFromFirestore(taskId) {
-            if (!isAuthReady || !userId || !db) {
+            if (!window.isAuthReady || !window.userId || !window.db) {
                 window.showConfirmationModal("Authentication Required", "Please log in to delete tasks.").then(() => {
-                    window.authModal.style.display = 'flex';
-                    window.authModalTitle.textContent = 'Login to Delete Task';
-                    window.authSubmitBtn.textContent = 'Login';
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Delete Task';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
                     window.currentAuthMode = 'login';
-                    window.authForm.reset();
+                    if (window.authForm) window.authForm.reset();
                 });
                 console.error("Firebase not ready or user not authenticated. Cannot delete task.");
                 return;
             }
             try {
-                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId));
+                await deleteDoc(doc(window.db, `artifacts/${appId}/users/${window.userId}/tasks`, taskId));
                 console.log("Task deleted:", taskId);
             } catch (e) {
                 console.error("Error deleting document: ", e);
@@ -222,19 +238,19 @@
          * @param {object} details - The company details object.
          */
         async function saveCompanyDetailsToFirestore(companyName, details) {
-            if (!isAuthReady || !userId || !db) { // Assuming only logged-in users can update public company details for simplicity
+            if (!window.isAuthReady || !window.userId || !window.db) {
                 window.showConfirmationModal("Authentication Required", "Please log in to save company details.").then(() => {
-                    window.authModal.style.display = 'flex';
-                    window.authModalTitle.textContent = 'Login to Save Company Details';
-                    window.authSubmitBtn.textContent = 'Login';
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Save Company Details';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
                     window.currentAuthMode = 'login';
-                    window.authForm.reset();
+                    if (window.authForm) window.authForm.reset();
                 });
                 console.error("Firebase not ready or user not authenticated. Cannot save company details.");
                 return;
             }
             try {
-                const docRef = doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName);
+                const docRef = doc(window.db, `artifacts/${appId}/public/data/companyDetails`, companyName);
                 await setDoc(docRef, details, { merge: true }); // Use merge to update existing fields or create new doc
                 console.log("Company details saved/updated in public collection for:", companyName);
             } catch (e) {
@@ -244,16 +260,14 @@
         }
 
         // Expose Firebase functions and variables to the global scope for the second script
-        window.db = db;
-        window.auth = auth;
-        window.userId = userId;
-        window.userEmail = userEmail;
-        window.isAuthReady = isAuthReady;
+        // Note: `app`, `db`, `auth`, `userId`, `userEmail`, `isAuthReady` are now exposed directly
+        // in `initializeFirebase` *after* they are initialized.
         window.appId = appId;
-        window.tasks = tasks; // Make sure this reference stays updated from onSnapshot
-        window.companyDetails = companyDetails; // Make sure this reference stays updated from onSnapshot
+        window.tasks = tasks; // These references are updated by onSnapshot in loadFirestoreData
+        window.companyDetails = companyDetails; // These references are updated by onSnapshot in loadFirestoreData
 
-        window.initializeApp = initializeApp; // for debugging if needed
+        // Expose Firebase SDK functions (these are static functions, not instances)
+        window.initializeApp = initializeApp;
         window.getAuth = getAuth;
         window.signInAnonymously = signInAnonymously;
         window.signInWithCustomToken = signInWithCustomToken;
@@ -273,7 +287,7 @@
         window.query = query;
         window.where = where;
 
-        // Make the Firestore specific functions globally available
+        // Expose the custom Firestore CRUD functions
         window.addTaskToFirestore = addTaskToFirestore;
         window.updateTaskInFirestore = updateTaskInFirestore;
         window.deleteTaskFromFirestore = deleteTaskFromFirestore;
@@ -556,17 +570,21 @@
 
     <script type="module">
         // Access global variables and functions exposed by the Firebase import script
+        // Note: 'tasks' and 'companyDetails' are local variables in this module,
+        // they are updated by the onSnapshot listeners.
         let tasks = window.tasks;
         let companyDetails = window.companyDetails;
 
         // Re-declare Firebase-related variables and functions here to ensure they are accessible
-        let db = window.db;
+        // These are references to the instances exposed on the window object after Firebase init
+        let db = window.db; // This will be assigned correctly when window.onload fires AND initializeFirebase completes
         let userId = window.userId;
         let userEmail = window.userEmail;
         let isAuthReady = window.isAuthReady;
-        let appId = window.appId; // Use the appId from the first script's config
+        let appId = window.appId;
 
         // Firebase functions from the first module
+        // These are the static functions from the Firebase SDK
         const { getFirestore, collection, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } = window;
 
 
@@ -951,11 +969,11 @@
             // Ensure user is logged in for task operations
             if (!window.userId) {
                 await showConfirmationModal("Login Required", "Please log in to add or update tasks.").then(() => {
-                    authModal.style.display = 'flex'; // Open login modal
-                    authModalTitle.textContent = 'Login to Add/Update Task';
-                    authSubmitBtn.textContent = 'Login';
-                    currentAuthMode = 'login';
-                    authForm.reset();
+                    if (window.authModal) window.authModal.style.display = 'flex'; // Open login modal
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Add Task';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
+                    window.currentAuthMode = 'login';
+                    if (window.authForm) window.authForm.reset();
                 });
                 return;
             }
@@ -1001,11 +1019,11 @@
         function handleEdit(e) {
             if (!window.userId) {
                 showConfirmationModal("Login Required", "Please log in to edit tasks.").then(() => {
-                    authModal.style.display = 'flex'; // Open login modal
-                    authModalTitle.textContent = 'Login to Edit Task';
-                    authSubmitBtn.textContent = 'Login';
-                    currentAuthMode = 'login';
-                    authForm.reset();
+                    if (window.authModal) window.authModal.style.display = 'flex'; // Open login modal
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Edit Task';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
+                    window.currentAuthMode = 'login';
+                    if (window.authForm) window.authForm.reset();
                 });
                 return;
             }
@@ -1034,11 +1052,11 @@
         async function handleDelete(e) {
             if (!window.userId) {
                 await showConfirmationModal("Login Required", "Please log in to delete tasks.").then(() => {
-                    authModal.style.display = 'flex'; // Open login modal
-                    authModalTitle.textContent = 'Login to Delete Task';
-                    authSubmitBtn.textContent = 'Login';
-                    currentAuthMode = 'login';
-                    authForm.reset();
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Delete Task';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
+                    window.currentAuthMode = 'login';
+                    if (window.authForm) window.authForm.reset();
                 });
                 return;
             }
@@ -1059,11 +1077,11 @@
         async function handleStatusToggle(e) {
             if (!window.userId) {
                 await showConfirmationModal("Login Required", "Please log in to change task status.").then(() => {
-                    authModal.style.display = 'flex'; // Open login modal
-                    authModalTitle.textContent = 'Login to Change Status';
-                    authSubmitBtn.textContent = 'Login';
-                    currentAuthMode = 'login';
-                    authForm.reset();
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Change Status';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
+                    window.currentAuthMode = 'login';
+                    if (window.authForm) window.authForm.reset();
                 });
                 return;
             }
@@ -1115,11 +1133,11 @@
             // Ensure user is logged in for company detail operations
             if (!window.userId) {
                 await showConfirmationModal("Login Required", "Please log in to save company details.").then(() => {
-                    authModal.style.display = 'flex';
-                    authModalTitle.textContent = 'Login to Save Company Details';
-                    authSubmitBtn.textContent = 'Login';
-                    currentAuthMode = 'login';
-                    authForm.reset();
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Save Company Details';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
+                    window.currentAuthMode = 'login';
+                    if (window.authForm) window.authForm.reset();
                 });
                 return;
             }
@@ -1147,7 +1165,8 @@
         });
 
         // --- Auth Modal Logic ---
-        let currentAuthMode = ''; // 'login' or 'signup' (made global implicitly via window)
+        // currentAuthMode is implicitly global because it's attached to window.currentAuthMode
+        window.currentAuthMode = '';
 
         loginBtn.addEventListener('click', () => {
             authModalTitle.textContent = 'Login';
@@ -1169,7 +1188,8 @@
             const confirmed = await showConfirmationModal("Confirm Logout", "Are you sure you want to log out?");
             if (confirmed) {
                 try {
-                    await signOut(window.auth); // Use the global auth instance
+                    // Use getAuth() to retrieve the Auth instance, which is now guaranteed to be available after initializeFirebase
+                    await signOut(getAuth());
                     console.log("User signed out.");
                 } catch (error) {
                     console.error("Error signing out:", error);
@@ -1184,11 +1204,12 @@
             const password = authPasswordInput.value;
 
             try {
-                if (window.currentAuthMode === 'login') { // Access globally
-                    await signInWithEmailAndPassword(window.auth, email, password); // Use global auth instance
+                // Use getAuth() to retrieve the Auth instance
+                if (window.currentAuthMode === 'login') {
+                    await signInWithEmailAndPassword(getAuth(), email, password);
                     console.log("User logged in successfully!");
-                } else if (window.currentAuthMode === 'signup') { // Access globally
-                    await createUserWithEmailAndPassword(window.auth, email, password); // Use global auth instance
+                } else if (window.currentAuthMode === 'signup') {
+                    await createUserWithEmailAndPassword(getAuth(), email, password);
                     console.log("User signed up successfully!");
                 }
                 authModal.style.display = 'none'; // Close modal on success
@@ -1234,11 +1255,8 @@
 
         // Initialize the app on window load
         window.onload = function () {
-            // These lines ensure that the local variables `db`, `userId`, `isAuthReady`,
-            // `tasks`, and `companyDetails` in this script refer to the same objects
-            // managed by the first script block (Firebase initialization).
-            // This is primarily for clarity; if they were truly module-scoped and updated
-            // by functions called from the first script, they would implicitly be synced.
+            // Re-assign local variables to window properties after window.onload fires
+            // This is primarily for clarity; these are updated by initializeFirebase and onAuthStateChanged
             db = window.db;
             userId = window.userId;
             userEmail = window.userEmail;
