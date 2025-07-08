@@ -6,1009 +6,6 @@
     <title>Project Task Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Firebase SDK imports -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, getDocs, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // --- IMPORTANT: Replace the placeholder values below with your ACTUAL Firebase project configuration ---
-        // You can find these details in your Firebase Console under Project settings (⚙️ icon) > Project settings > Your apps.
-        const firebaseConfig = {
-            apiKey: "AIzaSyBzxnDdBMGdfMfhwylMAkgzIwwRb-jaAaA", // Your provided API Key
-            authDomain: "project-task-manager-5663f.firebaseapp.com",
-            projectId: "project-task-manager-5663f",
-            storageBucket: "project-task-manager-5663f.firebasestorage.app",
-            messagingSenderId: "645859250366",
-            appId: "1:645859250366:web:41ac92d85f1db0318b0eef"
-            // measurementId: "G-XXXXXXXXXX" // Optional: Uncomment and replace if you use Google Analytics
-        };
-
-        const appId = firebaseConfig.appId || 'default-app-id';
-
-        let app;
-        let db;
-        let auth;
-        let userId = null;
-        let userEmail = null;
-        let isAuthReady = false;
-
-        // --- Global Data Arrays (Updated by Firestore Listeners) ---
-        let tasks = [];
-        let companyDetails = [];
-
-        // --- DOM Elements (Declared globally in this module, assigned in window.onload) ---
-        // These are declared here so they are accessible to all functions within this module.
-        let companyDetailsSelect;
-        let contactPersonInput;
-        let phoneInput;
-        let emailInput;
-        let addressInput;
-        let notesInput;
-        let addTaskForm;
-        let companyInput;
-        let taskInput;
-        let picInput;
-        let deadlineInput;
-        let statusInput;
-        let addUpdateTaskBtn;
-        let cancelEditTaskBtn;
-        let taskFormTitle;
-        let companyDetailsForm;
-        let confirmationModal;
-        let modalTitle;
-        let modalMessage;
-        let cancelConfirmBtn;
-        let proceedConfirmBtn;
-        let closeButton;
-        let loginBtn;
-        let signupBtn;
-        let logoutBtn;
-        let userEmailDisplay;
-        let authModal;
-        let authModalTitle;
-        let authForm;
-        let authEmailInput;
-        let authPasswordInput;
-        let authSubmitBtn;
-        let authModalCloseButton;
-        let addCompanyForm;
-        let newCompanyNameInput;
-        let quickNavLinks;
-
-
-        // --- Core UI Rendering and Data Update Functions (Moved here) ---
-
-        /**
-         * Shows a custom confirmation modal.
-         * @param {string} title - The title of the modal.
-         * @param {string} message - The message to display.
-         * @returns {Promise<boolean>} - Resolves true if confirmed, false if cancelled.
-         */
-        function showConfirmationModal(title, message) {
-            return new Promise(resolve => {
-                modalTitle.textContent = title;
-                modalMessage.textContent = message;
-                confirmationModal.style.display = 'flex';
-
-                const onProceed = () => {
-                    confirmationModal.style.display = 'none';
-                    proceedConfirmBtn.removeEventListener('click', onProceed);
-                    cancelConfirmBtn.removeEventListener('click', onCancel);
-                    closeButton.removeEventListener('click', onCancel);
-                    resolve(true);
-                };
-
-                const onCancel = () => {
-                    confirmationModal.style.display = 'none';
-                    proceedConfirmBtn.removeEventListener('click', onProceed);
-                    cancelConfirmBtn.removeEventListener('click', onCancel);
-                    closeButton.removeEventListener('click', onCancel);
-                    resolve(false);
-                };
-
-                proceedConfirmBtn.addEventListener('click', onProceed);
-                cancelConfirmBtn.addEventListener('click', onCancel);
-                closeButton.addEventListener('click', onCancel);
-            });
-        }
-        window.showConfirmationModal = showConfirmationModal; // Expose globally
-
-        // Update task count summary
-        function updateTaskCounts() {
-            const totalCount = tasks.length;
-            const pendingCount = tasks.filter(task => task.status === 'pending').length;
-            const inProgressCount = tasks.filter(task => task.status === 'in-progress').length;
-            const completedCount = tasks.filter(task => task.status === 'completed').length;
-
-            document.getElementById('total-tasks').textContent = totalCount;
-            document.getElementById('pending-tasks').textContent = pendingCount + inProgressCount;
-            document.getElementById('completed-tasks').textContent = completedCount;
-        }
-        window.updateTaskCounts = updateTaskCounts; // Expose globally
-
-        /**
-         * Populates the company dropdowns and quick navigation links.
-         */
-        function populateCompanyDropdowns() {
-            companyInput.innerHTML = '<option value="">Select Company</option>';
-            companyDetailsSelect.innerHTML = '<option value="">Select Company</option>';
-            quickNavLinks.innerHTML = '';
-
-            const sortedCompanies = [...companyDetails].sort((a, b) => a.id.localeCompare(b.id));
-
-            sortedCompanies.forEach(companyDetail => {
-                const option1 = document.createElement('option');
-                option1.value = companyDetail.id;
-                option1.textContent = companyDetail.id;
-                companyInput.appendChild(option1);
-
-                const option2 = document.createElement('option');
-                option2.value = companyDetail.id;
-                option2.textContent = companyDetail.id;
-                companyDetailsSelect.appendChild(option2);
-
-                const navLink = document.createElement('a');
-                navLink.href = `#${companyDetail.id.replace(/\s+/g, '-')}`;
-                navLink.className = "px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all";
-                navLink.textContent = companyDetail.id;
-                quickNavLinks.appendChild(navLink);
-            });
-        }
-        window.populateCompanyDropdowns = populateCompanyDropdowns; // Expose globally
-
-
-        // Render company sections with their respective tasks
-        function renderCompanySections() {
-            const companySections = document.getElementById('company-sections');
-            companySections.innerHTML = '';
-
-            const allCompanyNames = [...new Set([
-                ...tasks.map(task => task.company),
-                ...companyDetails.map(detail => detail.id)
-            ])].sort();
-
-            populateCompanyDropdowns(); // Ensure dropdowns are updated
-
-            allCompanyNames.forEach(company => {
-                let companyTasks = tasks.filter(task => task.company === company);
-
-                if (currentStatus !== 'all') {
-                    companyTasks = companyTasks.filter(task => task.status === currentStatus);
-                }
-
-                if (companyTasks.length === 0 && currentStatus !== 'all') {
-                    return;
-                }
-
-                const colors = companyColors[company] || { bg: "bg-gray-50", border: "border-gray-200", header: "from-gray-500 to-gray-700" };
-
-                const details = companyDetails.find(d => d.id === company) || {
-                    id: company,
-                    contactPerson: '', phone: '', email: '', address: '', notes: ''
-                };
-
-                const section = document.createElement('div');
-                section.className = `company-section ${colors.bg} rounded-xl shadow-md border ${colors.border} overflow-hidden company-card`;
-                section.id = company.replace(/\s+/g, '-');
-
-                const header = document.createElement('div');
-                header.className = `company-header bg-gradient-to-r ${colors.header} p-4 text-white`;
-                header.innerHTML = `
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-xl font-bold">${company}</h2>
-                        <div class="flex items-center gap-2">
-                            <span class="bg-white text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
-                                ${companyTasks.length} Task${companyTasks.length !== 1 ? 's' : ''}
-                            </span>
-                            <button class="delete-company-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium" data-company="${company}">
-                                Delete Company
-                            </button>
-                        </div>
-                    </div>
-                `;
-                section.appendChild(header);
-
-                const tabs = document.createElement('div');
-                tabs.className = 'flex border-b bg-white';
-                tabs.innerHTML = `
-                    <button class="tab-button tab-active px-4 py-2 font-medium text-sm" data-tab="tasks-${company}">Tasks</button>
-                    <button class="tab-button px-4 py-2 font-medium text-sm" data-tab="details-${company}">Company Details</button>
-                `;
-                section.appendChild(tabs);
-
-                const tasksContent = document.createElement('div');
-                tasksContent.className = 'tab-content';
-                tasksContent.id = `tasks-${company}`;
-
-                if (companyTasks.length > 0) {
-                    tasksContent.innerHTML = `
-                        <div class="overflow-x-auto p-4">
-                            <table class="min-w-full text-sm text-left rounded-lg overflow-hidden">
-                                <thead class="text-xs uppercase bg-white bg-opacity-80">
-                                    <tr>
-                                        <th scope="col" class="px-6 py-3">Task</th>
-                                        <th scope="col" class="px-6 py-3">PIC</th>
-                                        <th scope="col" class="px-6 py-3">Deadline</th>
-                                        <th scope="col" class="px-6 py-3">Status</th>
-                                        <th scope="col" class="px-6 py-3">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="task-table-${company.replace(/\s+/g, '-')}" class="divide-y divide-gray-200">
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                } else {
-                    tasksContent.innerHTML = `
-                        <div class="text-center py-8">
-                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                            </svg>
-                            <h3 class="mt-2 text-sm font-medium text-gray-900">No tasks found</h3>
-                            <p class="mt-1 text-sm text-gray-500">Get started by creating a new task for this company.</p>
-                        </div>
-                    `;
-                }
-                section.appendChild(tasksContent);
-
-                const detailsContent = document.createElement('div');
-                detailsContent.className = 'tab-content hidden p-4';
-                detailsContent.id = `details-${company}`;
-
-                detailsContent.innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <h3 class="text-sm font-medium text-gray-500">Contact Person</h3>
-                            <p class="text-base font-medium text-gray-900">${details.contactPerson || 'Not specified'}</p>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-medium text-gray-500">Phone</h3>
-                            <p class="text-base font-medium text-gray-900">${details.phone || 'Not specified'}</p>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-medium text-gray-500">Email</h3>
-                            <p class="text-base font-medium text-gray-900">${details.email || 'Not specified'}</p>
-                        </div>
-                        <div class="md:col-span-2">
-                            <h3 class="text-sm font-medium text-gray-500">Address</h3>
-                            <p class="text-base font-medium text-gray-900">${details.address || 'Not specified'}</p>
-                        </div>
-                        <div class="md:col-span-2">
-                            <h3 class="text-sm font-medium text-gray-500">Notes</h3>
-                            <p class="text-base font-medium text-gray-900 whitespace-pre-line">${details.notes || 'No notes available'}</p>
-                        </div>
-                        <div class="md:col-span-2">
-                            <button class="edit-details-btn px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-all text-sm font-medium" data-company="${company}">
-                                Edit Details
-                            </button>
-                        </div>
-                    </div>
-                `;
-                section.appendChild(detailsContent);
-
-                companySections.appendChild(section);
-
-                if (companyTasks.length > 0) {
-                    const taskTable = document.getElementById(`task-table-${company.replace(/\s+/g, '-')}`);
-
-                    companyTasks.forEach(task => {
-                        const row = document.createElement('tr');
-                        row.className = 'bg-white bg-opacity-60 border-b hover:bg-opacity-100 transition-all';
-                        row.dataset.id = task.id;
-
-                        let statusClass = '';
-                        let statusText = '';
-
-                        switch(task.status) {
-                            case 'pending': statusClass = 'status-pending'; statusText = 'Pending'; break;
-                            case 'in-progress': statusClass = 'status-in-progress'; statusText = 'In Progress'; break;
-                            case 'completed': statusClass = 'status-completed'; statusText = 'Completed'; break;
-                        }
-
-                        row.innerHTML = `
-                            <td class="px-6 py-4 font-medium">${task.task}</td>
-                            <td class="px-6 py-4">${task.pic || '-'}</td>
-                            <td class="px-6 py-4">${task.deadline || '-'}</td>
-                            <td class="px-6 py-4">
-                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusClass}">
-                                    ${statusText}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 flex gap-2">
-                                <button class="edit-btn text-blue-600 hover:text-blue-800" data-id="${task.id}">Edit</button>
-                                <button class="delete-btn text-red-600 hover:text-red-800" data-id="${task.id}">Delete</button>
-                                <button class="status-btn text-green-600 hover:text-green-800" data-id="${task.id}" data-status="${task.status}">
-                                    ${task.status === 'completed' ? 'Mark Pending' : 'Mark Complete'}
-                                </button>
-                            </td>
-                        `;
-                        taskTable.appendChild(row);
-                    });
-                }
-            });
-            addEventListenersToDynamicElements();
-        }
-        window.renderCompanySections = renderCompanySections; // Expose globally
-
-        // Add event listeners to dynamically created elements
-        function addEventListenersToDynamicElements() {
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.addEventListener('click', handleEdit);
-            });
-            document.querySelectorAll('.delete-btn').forEach(btn => {
-                btn.addEventListener('click', handleDelete);
-            });
-            document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.addEventListener('click', handleStatusToggle);
-            });
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.addEventListener('click', handleTabClick);
-            });
-            document.querySelectorAll('.edit-details-btn').forEach(btn => {
-                btn.addEventListener('click', handleEditDetails);
-            });
-            document.querySelectorAll('.delete-company-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const companyToDelete = e.target.dataset.company;
-                    deleteCompany(companyToDelete);
-                });
-            });
-        }
-        window.addEventListenersToDynamicElements = addEventListenersToDynamicElements; // Expose globally
-
-
-        // Handle tab click
-        function handleTabClick(e) {
-            const tabId = e.target.dataset.tab;
-            const parentSection = e.target.closest('.company-section');
-
-            if (!parentSection) return;
-
-            const tabButtons = parentSection.querySelectorAll('.tab-button');
-            const tabContents = parentSection.querySelectorAll('.tab-content');
-
-            tabButtons.forEach(btn => {
-                btn.classList.remove('tab-active');
-            });
-            e.target.classList.add('tab-active');
-
-            tabContents.forEach(content => {
-                if (content.id === tabId) {
-                    content.classList.remove('hidden');
-                } else {
-                    content.classList.add('hidden');
-                }
-            });
-        }
-
-        // Handle edit details button click
-        function handleEditDetails(e) {
-            const company = e.target.dataset.company;
-            companyDetailsSelect.value = company;
-
-            const event = new Event('change');
-            companyDetailsSelect.dispatchEvent(event);
-
-            companyDetailsForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        // Handle adding/updating a task
-        addTaskForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to add or update tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Add Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const company = companyInput.value;
-            const task = taskInput.value.trim();
-            const pic = picInput.value.trim();
-            const deadline = deadlineInput.value;
-            const status = statusInput.value;
-
-            if (!company || !task) {
-                await showConfirmationModal("Missing Information", "Please select a company and enter a task description.");
-                return;
-            }
-
-            const taskData = { company, task, pic, deadline, status };
-
-            if (editingTaskId) {
-                await updateTaskInFirestore(editingTaskId, taskData);
-                editingTaskId = null;
-                addUpdateTaskBtn.textContent = 'Add Task';
-                taskFormTitle.textContent = 'Add New Task';
-                cancelEditTaskBtn.classList.add('hidden');
-            } else {
-                await addTaskToFirestore(taskData);
-            }
-
-            addTaskForm.reset();
-        });
-
-        // Handle canceling task edit
-        cancelEditTaskBtn.addEventListener('click', () => {
-            editingTaskId = null;
-            addTaskForm.reset();
-            addUpdateTaskBtn.textContent = 'Add Task';
-            taskFormTitle.textContent = 'Add New Task';
-            cancelEditTaskBtn.classList.add('hidden');
-        });
-
-        // Handle editing a task
-        function handleEdit(e) {
-            if (!userId) {
-                showConfirmationModal("Login Required", "Please log in to edit tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Edit Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const taskId = e.target.dataset.id;
-            const taskToEdit = tasks.find(task => task.id === taskId);
-
-            if (taskToEdit) {
-                companyInput.value = taskToEdit.company;
-                taskInput.value = taskToEdit.task;
-                picInput.value = taskToEdit.pic;
-                deadlineInput.value = taskToEdit.deadline;
-                statusInput.value = taskToEdit.status;
-
-                editingTaskId = taskId;
-                addUpdateTaskBtn.textContent = 'Update Task';
-                taskFormTitle.textContent = 'Edit Task';
-                cancelEditTaskBtn.classList.remove('hidden');
-
-                addTaskForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        }
-
-        // Handle deleting a task
-        async function handleDelete(e) {
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to delete tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Delete Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const taskId = e.target.dataset.id;
-
-            const confirmed = await showConfirmationModal(
-                "Confirm Deletion",
-                "Are you sure you want to delete this task? This action cannot be undone."
-            );
-
-            if (confirmed) {
-                await deleteTaskFromFirestore(taskId);
-            }
-        }
-
-        // Handle toggling task status
-        async function handleStatusToggle(e) {
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to change task status.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Change Status';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const taskId = e.target.dataset.id;
-            const taskIndex = tasks.findIndex(task => task.id === taskId);
-
-            if (taskIndex > -1) {
-                let newStatus;
-                if (tasks[taskIndex].status === 'completed') {
-                    newStatus = 'pending';
-                } else {
-                    newStatus = 'completed';
-                }
-                await updateTaskInFirestore(taskId, { status: newStatus });
-            }
-        }
-
-        // Filter functionality
-        document.querySelectorAll('.filter-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                document.querySelectorAll('.filter-btn').forEach(btn => {
-                    btn.classList.remove('bg-indigo-600', 'text-white');
-                    btn.classList.add('bg-gray-100', 'hover:bg-gray-200');
-                });
-                this.classList.remove('bg-gray-100', 'hover:bg-gray-200');
-                this.classList.add('bg-indigo-600', 'text-white');
-
-                if (this.id === 'all-filter') {
-                    currentStatus = 'all';
-                } else if (this.id === 'pending-filter') {
-                    currentStatus = 'pending';
-                } else if (this.id === 'progress-filter') {
-                    currentStatus = 'in-progress';
-                } else if (this.id === 'completed-filter') {
-                    currentStatus = 'completed';
-                }
-                renderCompanySections();
-            });
-        });
-
-        // Handle saving company details
-        companyDetailsForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to save company details.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Save Company Details';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const company = companyDetailsSelect.value;
-            const contactPerson = contactPersonInput.value.trim();
-            const phone = phoneInput.value.trim();
-            const email = emailInput.value.trim();
-            const address = addressInput.value.trim();
-            const notes = notesInput.value.trim();
-
-            if (!company) {
-                await showConfirmationModal("Missing Information", "Please select a company to save details for.");
-                return;
-            }
-
-            const detailsData = {
-                contactPerson, phone, email, address, notes
-            };
-
-            await saveCompanyDetailsToFirestore(company, detailsData);
-            companyDetailsForm.reset();
-            companyDetailsSelect.value = '';
-        });
-
-        // --- Auth Modal Logic ---
-        window.currentAuthMode = '';
-
-        loginBtn.addEventListener('click', () => {
-            authModalTitle.textContent = 'Login';
-            authSubmitBtn.textContent = 'Login';
-            window.currentAuthMode = 'login';
-            authForm.reset();
-            authModal.style.display = 'flex';
-        });
-
-        signupBtn.addEventListener('click', () => {
-            authModalTitle.textContent = 'Sign Up';
-            authSubmitBtn.textContent = 'Sign Up';
-            window.currentAuthMode = 'signup';
-            authForm.reset();
-            authModal.style.display = 'flex';
-        });
-
-        logoutBtn.addEventListener('click', async () => {
-            const confirmed = await showConfirmationModal("Confirm Logout", "Are you sure you want to log out?");
-            if (confirmed) {
-                try {
-                    await signOut(getAuth());
-                    console.log("User signed out.");
-                } catch (error) {
-                    console.error("Error signing out:", error);
-                    await showConfirmationModal("Logout Error", `Failed to log out: ${error.message}`);
-                }
-            }
-        });
-
-        authForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = authEmailInput.value;
-            const password = authPasswordInput.value;
-
-            try {
-                if (window.currentAuthMode === 'login') {
-                    await signInWithEmailAndPassword(getAuth(), email, password);
-                    console.log("User logged in successfully!");
-                } else if (window.currentAuthMode === 'signup') {
-                    await createUserWithEmailAndPassword(getAuth(), email, password);
-                    console.log("User signed up successfully!");
-                }
-                authModal.style.display = 'none';
-            } catch (error) {
-                console.error("Authentication error:", error);
-                let errorMessage = "An unknown error occurred.";
-                if (error.code) {
-                    switch(error.code) {
-                        case 'auth/email-already-in-use': errorMessage = 'This email is already in use. Try logging in.'; break;
-                        case 'auth/invalid-email': errorMessage = 'Invalid email address format.'; break;
-                        case 'auth/weak-password': errorMessage = 'Password should be at least 6 characters.'; break;
-                        case 'auth/user-not-found':
-                        case 'auth/wrong-password': errorMessage = 'Invalid email or password.'; break;
-                        default: errorMessage = error.message;
-                    }
-                }
-                await showConfirmationModal("Authentication Failed", errorMessage);
-            }
-        });
-
-        // Close auth modal when clicking 'x' or outside
-        authModalCloseButton.addEventListener('click', () => {
-            authModal.style.display = 'none';
-        });
-        window.addEventListener('click', (event) => {
-            if (event.target == authModal) {
-                authModal.style.display = 'none';
-            }
-        });
-
-        // Handle Add Company form submission
-        addCompanyForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const newCompanyName = newCompanyNameInput.value.trim();
-            if (newCompanyName) {
-                await addCompany(newCompanyName);
-                newCompanyNameInput.value = '';
-            } else {
-                await showConfirmationModal("Missing Information", "Please enter a company name.");
-            }
-        });
-
-
-        // --- Firestore CRUD Functions (local scope for clarity) ---
-        // These functions interact with Firestore and are called by event handlers.
-
-        /**
-         * Adds a new task to Firestore.
-         * @param {object} newTask - The task object to add.
-         */
-        async function addTaskToFirestore(newTask) {
-            if (!isAuthReady || !userId || !db) {
-                showConfirmationModal("Authentication Required", "Please log in to add tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Add Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                console.error("Firebase not ready or user not authenticated. Cannot add task.");
-                return;
-            }
-            try {
-                const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/tasks`), newTask);
-                console.log("Task added with ID:", docRef.id);
-                renderCompanySections(); // Explicitly trigger re-render
-                updateTaskCounts(); // Explicitly trigger update
-            } catch (e) {
-                console.error("Error adding document: ", e);
-                showConfirmationModal("Error", "Failed to add task: " + e.message).then(() => {});
-            }
-        }
-
-        /**
-         * Updates an existing task in Firestore.
-         * @param {string} taskId - The ID of the task document.
-         * @param {object} updatedFields - The fields to update.
-         */
-        async function updateTaskInFirestore(taskId, updatedFields) {
-            if (!isAuthReady || !userId || !db) {
-                showConfirmationModal("Authentication Required", "Please log in to update tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Update Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                console.error("Firebase not ready or user not authenticated. Cannot update task.");
-                return;
-            }
-            try {
-                const taskRef = doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId);
-                await updateDoc(taskRef, updatedFields);
-                console.log("Task updated:", taskId);
-                renderCompanySections(); // Explicitly trigger re-render
-                updateTaskCounts(); // Explicitly trigger update
-            } catch (e) {
-                console.error("Error updating document: ", e);
-                showConfirmationModal("Error", "Failed to update task: " + e.message).then(() => {});
-            }
-        }
-
-        /**
-         * Deletes a task from Firestore.
-         * @param {string} taskId - The ID of the task document to delete.
-         */
-        async function deleteTaskFromFirestore(taskId) {
-            if (!isAuthReady || !userId || !db) {
-                showConfirmationModal("Authentication Required", "Please log in to delete tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Delete Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                console.error("Firebase not ready or user not authenticated. Cannot delete task.");
-                return;
-            }
-            try {
-                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskId));
-                console.log("Task deleted:", taskId);
-                renderCompanySections(); // Explicitly trigger re-render
-                updateTaskCounts(); // Explicitly trigger update
-            } catch (e) {
-                console.error("Error deleting document: ", e);
-                showConfirmationModal("Error", "Failed to delete task: " + e.message).then(() => {});
-            }
-        }
-
-        /**
-         * Saves or updates company details in Firestore.
-         * @param {string} companyName - The name of the company (used as document ID).
-         * @param {object} details - The company details object.
-         */
-        async function saveCompanyDetailsToFirestore(companyName, details) {
-            if (!isAuthReady || !userId || !db) {
-                showConfirmationModal("Authentication Required", "Please log in to save company details.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Save Company Details';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                console.error("Firebase not ready or user not authenticated. Cannot save company details.");
-                return;
-            }
-            try {
-                const docRef = doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName);
-                await setDoc(docRef, details, { merge: true });
-                console.log("Company details saved/updated in public collection for:", companyName);
-                renderCompanySections(); // Explicitly re-render
-            } catch (e) {
-                console.error("Error saving company details: ", e);
-                showConfirmationModal("Error", "Failed to save company details: " + e.message).then(() => {});
-            }
-        }
-
-        /**
-         * Adds a new company to the public companyDetails collection.
-         * @param {string} companyName - The name of the company to add.
-         */
-        async function addCompany(companyName) {
-            if (!isAuthReady || !userId || !db) {
-                showConfirmationModal("Authentication Required", "Please log in to add companies.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Add Company';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const existingCompany = companyDetails.find(d => d.id === companyName);
-            if (existingCompany) {
-                showConfirmationModal("Company Exists", `Company '${companyName}' already exists.`).then(() => {});
-                return;
-            }
-
-            try {
-                const newCompanyDetails = {
-                    contactPerson: '', phone: '', email: '', address: '', notes: ''
-                };
-                const docRef = doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName);
-                await setDoc(docRef, newCompanyDetails);
-                console.log("Company added:", companyName);
-                // onSnapshot for companyDetails will trigger renderCompanySections and populateCompanyDropdowns
-            } catch (e) {
-                console.error("Error adding company: ", e);
-                showConfirmationModal("Error", "Failed to add company: " + e.message).then(() => {});
-            }
-        }
-
-        /**
-         * Deletes a company and all its associated tasks.
-         * @param {string} companyName - The name of the company to delete.
-         */
-        async function deleteCompany(companyName) {
-            if (!isAuthReady || !userId || !db) {
-                showConfirmationModal("Authentication Required", "Please log in to delete companies.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Delete Company';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const confirmed = await showConfirmationModal(
-                "Confirm Deletion",
-                `Are you sure you want to delete company '${companyName}' and ALL its associated tasks? This action cannot be undone.`
-            );
-
-            if (confirmed) {
-                try {
-                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName));
-                    console.log(`Company details for '${companyName}' deleted.`);
-
-                    const tasksQuery = query(collection(db, `artifacts/${appId}/users/${userId}/tasks`), where("company", "==", companyName));
-                    const querySnapshot = await getDocs(tasksQuery);
-
-                    const deletePromises = [];
-                    querySnapshot.forEach((taskDoc) => {
-                        deletePromises.push(deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/tasks`, taskDoc.id)));
-                    });
-
-                    await Promise.all(deletePromises);
-                    console.log(`All tasks for '${companyName}' by user '${userId}' deleted.`);
-                } catch (e) {
-                    console.error("Error deleting company and its tasks: ", e);
-                    showConfirmationModal("Error", "Failed to delete company and its tasks: " + e.message).then(() => {});
-                }
-            }
-        }
-
-
-        // --- Firebase Initialization and Data Loading ---
-
-        // Initialize Firebase and set up authentication listener
-        async function initializeFirebase() {
-            try {
-                if (!app) {
-                    app = initializeApp(firebaseConfig);
-                    db = getFirestore(app);
-                    auth = getAuth(app);
-
-                    // Expose the initialized Firebase instances and other core variables to the window object
-                    window.app = app;
-                    window.db = db;
-                    window.auth = auth;
-                    window.tasks = tasks;
-                    window.companyDetails = companyDetails;
-
-                    onAuthStateChanged(auth, async (user) => {
-                        if (user) {
-                            userId = user.uid;
-                            userEmail = user.email || 'Guest User';
-                            console.log("Authenticated with user ID:", userId, "Email:", userEmail);
-                            if (userEmailDisplay) userEmailDisplay.textContent = userEmail;
-                            if (logoutBtn) logoutBtn.classList.remove('hidden');
-                            if (loginBtn) loginBtn.classList.add('hidden');
-                            if (signupBtn) signupBtn.classList.add('hidden');
-                        } else {
-                            console.log("No user signed in.");
-                            userId = null;
-                            userEmail = null;
-                            if (userEmailDisplay) userEmailDisplay.textContent = '';
-                            if (logoutBtn) logoutBtn.classList.add('hidden');
-                            if (loginBtn) loginBtn.classList.remove('hidden');
-                            if (signupBtn) signupBtn.classList.remove('hidden');
-                        }
-                        isAuthReady = true;
-                        window.userId = userId;
-                        window.userEmail = userEmail;
-                        window.isAuthReady = isAuthReady;
-
-                        loadFirestoreData();
-                        renderCompanySections();
-                        updateTaskCounts();
-                        displayUserId();
-                    });
-                }
-            } catch (error) {
-                console.error("Error initializing Firebase:", error);
-                showConfirmationModal("Firebase Initialization Error", "Failed to initialize Firebase. Please check your console for errors and ensure your `firebaseConfig` is correct. Error: " + error.message);
-            }
-        }
-
-        // Displays the current user ID and Email on the page
-        function displayUserId() {
-            const userIdDisplay = document.getElementById('user-id-display');
-            if (userIdDisplay) {
-                userIdDisplay.textContent = `User ID: ${userId || 'N/A'}`;
-            }
-        }
-        window.displayUserId = displayUserId;
-
-        /**
-         * Loads tasks and company details from Firestore in real-time using onSnapshot.
-         */
-        function loadFirestoreData() {
-            if (!isAuthReady || !db) {
-                console.log("Firebase not ready. Cannot load Firestore data.");
-                return;
-            }
-
-            const publicCompanyDetailsColRef = collection(db, `artifacts/${appId}/public/data/companyDetails`);
-            onSnapshot(publicCompanyDetailsColRef, (snapshot) => {
-                companyDetails = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                window.companyDetails = companyDetails;
-                console.log("Public Company details loaded/updated from Firestore:", companyDetails);
-                renderCompanySections();
-                populateCompanyDropdowns();
-            }, (error) => {
-                console.error("Error listening to public company details collection:", error);
-                if (error.code === 'permission-denied') {
-                    showConfirmationModal("Permission Denied", "Cannot access public company details. Please ensure your Firebase Security Rules allow read access for this collection (e.g., `allow read: if true;`).");
-                }
-            });
-
-            if (userId) {
-                const tasksColRef = collection(db, `artifacts/${appId}/users/${userId}/tasks`);
-                onSnapshot(tasksColRef, (snapshot) => {
-                    tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    window.tasks = tasks;
-                    console.log("Private Tasks loaded/updated from Firestore for user:", userId, tasks);
-                    renderCompanySections();
-                    updateTaskCounts();
-                }, (error) => {
-                    console.error("Error listening to private tasks collection:", error);
-                    if (error.code === 'permission-denied') {
-                        showConfirmationModal("Permission Denied", "Cannot access your private tasks. Please check your Firebase Security Rules for `users/{userId}/tasks` path (e.g., `allow read, write: if request.auth != null && request.auth.uid == userId;`).");
-                    }
-                });
-            } else {
-                tasks = [];
-                window.tasks = tasks;
-                renderCompanySections();
-                updateTaskCounts();
-                console.log("No user logged in, private tasks cleared.");
-            }
-        }
-        window.loadFirestoreData = loadFirestoreData;
-
-
-        // Expose Firebase SDK functions (these are static functions, not instances)
-        window.initializeApp = initializeApp;
-        window.getAuth = getAuth;
-        window.signInAnonymously = signInAnonymously;
-        window.signInWithCustomToken = signInWithCustomToken;
-        window.onAuthStateChanged = onAuthStateChanged;
-        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
-        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
-        window.signOut = signOut;
-        window.getFirestore = getFirestore;
-        window.collection = collection;
-        window.getDocs = getDocs;
-        window.addDoc = addDoc;
-        window.setDoc = setDoc;
-        window.updateDoc = updateDoc;
-        window.deleteDoc = deleteDoc;
-        window.doc = doc;
-        window.onSnapshot = onSnapshot;
-        window.query = query;
-        window.where = where;
-
-        // Expose the custom Firestore CRUD functions
-        window.addTaskToFirestore = addTaskToFirestore;
-        window.updateTaskInFirestore = updateTaskInFirestore;
-        window.deleteTaskFromFirestore = deleteTaskFromFirestore;
-        window.saveCompanyDetailsToFirestore = saveCompanyDetailsToFirestore;
-        window.addCompany = addCompany;
-        window.deleteCompany = deleteCompany;
-
-
-        // Initialize Firebase when this module script loads
-        initializeFirebase();
-
-    </script>
     <style>
         body {
             font-family: 'Poppins', sans-serif;
@@ -1262,28 +259,50 @@
         </div>
     </div>
 
-
+    <!-- Firebase SDK and App Logic -->
     <script type="module">
-        // Access global variables and functions exposed by the Firebase import script
-        let tasks = window.tasks;
-        let companyDetails = window.companyDetails;
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, getDocs, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Re-declare Firebase-related variables and functions here to ensure they are accessible
-        let db = window.db;
-        let userId = window.userId;
-        let userEmail = window.userEmail;
-        let isAuthReady = window.isAuthReady;
-        let appId = window.appId;
+        // --- 1. CONFIGURATION AND INITIALIZATION ---
 
-        // Firebase functions from the first module
-        const { getFirestore, collection, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, query, where, getDocs } = window;
+        // Use environment variables if available, otherwise use a fallback config.
+        const firebaseConfig = typeof __firebase_config !== 'undefined'
+            ? JSON.parse(__firebase_config)
+            : {
+                apiKey: "YOUR_API_KEY", // Replace with your actual config
+                authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_PROJECT_ID.appspot.com",
+                messagingSenderId: "YOUR_SENDER_ID",
+                appId: "YOUR_APP_ID"
+            };
 
+        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.appId;
 
-        // Current filter status
-        let currentStatus = 'all';
+        // Initialize Firebase
+        let app, db, auth;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (error) {
+            console.error("Error initializing Firebase:", error);
+            alert("Could not initialize Firebase. Please check your configuration and console for errors.");
+        }
 
-        // Variable to hold the ID of the task being edited
-        let editingTaskId = null;
+        // --- 2. STATE VARIABLES ---
+
+        let tasks = [];
+        let companyDetails = [];
+        let currentUserId = null;
+        let currentStatus = 'all'; // for filtering
+        let editingTaskId = null; // for editing tasks
+        let currentAuthMode = ''; // 'login' or 'signup'
+        let unsubscribeTasks = () => {}; // Firestore listener unsubscriber
+        let unsubscribeCompanyDetails = () => {}; // Firestore listener unsubscriber
 
         // Company colors for visual distinction
         const companyColors = {
@@ -1299,12 +318,14 @@
             "TYARA GROUP": { bg: "bg-teal-50", border: "border-teal-200", header: "from-teal-500 to-teal-700" }
         };
 
-        // DOM elements
+        // --- 3. DOM ELEMENT REFERENCES ---
+
+        const userIdDisplay = document.getElementById('user-id-display');
         const companyDetailsSelect = document.getElementById('company-details-select');
         const contactPersonInput = document.getElementById('contact-person-input');
         const phoneInput = document.getElementById('phone-input');
         const emailInput = document.getElementById('email-input');
-        const addressInput = document.getElementById('address-input'); // Corrected typo here
+        const addressInput = document.getElementById('address-input');
         const notesInput = document.getElementById('notes-input');
         const addTaskForm = document.getElementById('add-task-form');
         const companyInput = document.getElementById('company-input');
@@ -1316,15 +337,12 @@
         const cancelEditTaskBtn = document.getElementById('cancel-edit-task-btn');
         const taskFormTitle = document.getElementById('task-form-title');
         const companyDetailsForm = document.getElementById('company-details-form');
-
         const confirmationModal = document.getElementById('confirmationModal');
         const modalTitle = document.getElementById('modal-title');
         const modalMessage = document.getElementById('modal-message');
         const cancelConfirmBtn = document.getElementById('cancelConfirm');
         const proceedConfirmBtn = document.getElementById('proceedConfirm');
         const closeButton = confirmationModal.querySelector('.close-button');
-
-        // New Auth DOM elements
         const loginBtn = document.getElementById('login-btn');
         const signupBtn = document.getElementById('signup-btn');
         const logoutBtn = document.getElementById('logout-btn');
@@ -1336,574 +354,463 @@
         const authPasswordInput = document.getElementById('auth-password');
         const authSubmitBtn = document.getElementById('auth-submit-btn');
         const authModalCloseButton = authModal.querySelector('.close-button');
-
-        // New Company DOM elements
         const addCompanyForm = document.getElementById('add-company-form');
         const newCompanyNameInput = document.getElementById('new-company-name-input');
         const quickNavLinks = document.getElementById('quick-nav-links');
+        const companySections = document.getElementById('company-sections');
 
+        // --- 4. AUTHENTICATION & APP STARTUP ---
 
-        // Expose auth buttons to the global scope for the first script to update them
-        window.loginBtn = loginBtn;
-        window.signupBtn = signupBtn;
-        window.logoutBtn = logoutBtn;
-        window.userEmailDisplay = userEmailDisplay;
+        async function initializeAppAndAuth() {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    // User is signed in.
+                    currentUserId = user.uid;
+                    const userEmail = user.isAnonymous ? 'Guest User (Anonymous)' : user.email || 'Authenticated User';
+                    console.log("Auth state changed: Signed in as", userEmail, `(UID: ${currentUserId})`);
+                    updateUIAfterAuthChange(true, userEmail);
+                    attachFirestoreListeners();
+                } else {
+                    // User is signed out.
+                    currentUserId = null;
+                    console.log("Auth state changed: Signed out.");
+                    updateUIAfterAuthChange(false, '');
+                    detachFirestoreListeners();
+                    renderUI(); // Render the logged-out state
+                }
+            });
 
+            // Trigger initial sign-in if no user is currently detected.
+            if (!auth.currentUser) {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        console.log("Attempting sign-in with custom token...");
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        console.log("Attempting anonymous sign-in...");
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Error during initial automatic sign-in:", error);
+                    showConfirmationModal("Authentication Error", "Could not sign you in automatically. Please try logging in manually. Error: " + error.message);
+                }
+            }
+        }
 
-        /**
-         * Shows a custom confirmation modal.
-         * @param {string} title - The title of the modal.
-         * @param {string} message - The message to display.
-         * @returns {Promise<boolean>} - Resolves true if confirmed, false if cancelled.
-         */
-        function showConfirmationModal(title, message) {
-            return new Promise(resolve => {
-                modalTitle.textContent = title;
-                modalMessage.textContent = message;
-                confirmationModal.style.display = 'flex'; // Use flex to center
+        function updateUIAfterAuthChange(isLoggedIn, email) {
+            userIdDisplay.textContent = `User ID: ${currentUserId || 'N/A'}`;
+            userEmailDisplay.textContent = email;
+            logoutBtn.classList.toggle('hidden', !isLoggedIn);
+            loginBtn.classList.toggle('hidden', isLoggedIn);
+            signupBtn.classList.toggle('hidden', isLoggedIn);
+        }
 
-                const onProceed = () => {
-                    confirmationModal.style.display = 'none';
-                    proceedConfirmBtn.removeEventListener('click', onProceed);
-                    cancelConfirmBtn.removeEventListener('click', onCancel);
-                    closeButton.removeEventListener('click', onCancel);
-                    resolve(true);
-                };
+        // --- 5. FIRESTORE DATA MANAGEMENT ---
 
-                const onCancel = () => {
-                    confirmationModal.style.display = 'none';
-                    proceedConfirmBtn.removeEventListener('click', onProceed);
-                    cancelConfirmBtn.removeEventListener('click', onCancel);
-                    closeButton.removeEventListener('click', onCancel);
-                    resolve(false);
-                };
+        function attachFirestoreListeners() {
+            if (!currentUserId) {
+                console.error("Attempted to attach listeners without a user.");
+                return;
+            }
+            console.log("Attaching Firestore listeners for user:", currentUserId);
 
-                proceedConfirmBtn.addEventListener('click', onProceed);
-                cancelConfirmBtn.addEventListener('click', onCancel);
-                closeButton.addEventListener('click', onCancel);
+            // Detach any existing listeners before attaching new ones
+            detachFirestoreListeners();
+
+            // Listener for public company details
+            const publicCompanyDetailsColRef = collection(db, `artifacts/${appId}/public/data/companyDetails`);
+            unsubscribeCompanyDetails = onSnapshot(publicCompanyDetailsColRef, (snapshot) => {
+                companyDetails = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Public Company details loaded/updated:", companyDetails);
+                renderUI();
+            }, (error) => {
+                console.error("Error listening to public company details:", error);
+                if (error.code === 'permission-denied') {
+                    showConfirmationModal("Permission Denied", "Cannot access public company details. Your security rules may be preventing access.");
+                }
+            });
+
+            // Listener for private user tasks
+            const tasksColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/tasks`);
+            unsubscribeTasks = onSnapshot(tasksColRef, (snapshot) => {
+                tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Private Tasks loaded/updated for user:", currentUserId, tasks);
+                renderUI();
+            }, (error) => {
+                console.error("Error listening to private tasks:", error);
+                if (error.code === 'permission-denied') {
+                    showConfirmationModal("Permission Denied", "Cannot access your private tasks. Check your security rules for the user tasks path.");
+                }
             });
         }
-        window.showConfirmationModal = showConfirmationModal; // Expose globally
+
+        function detachFirestoreListeners() {
+            console.log("Detaching Firestore listeners.");
+            unsubscribeCompanyDetails();
+            unsubscribeTasks();
+            tasks = [];
+            companyDetails = [];
+        }
 
 
-        // Update task count summary
+        async function addTaskToFirestore(newTask) {
+            if (!currentUserId) return showLoginPrompt("add tasks");
+            try {
+                await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/tasks`), newTask);
+                console.log("Task added successfully.");
+            } catch (e) {
+                console.error("Error adding task: ", e);
+                showConfirmationModal("Error", "Failed to add task: " + e.message);
+            }
+        }
+
+        async function updateTaskInFirestore(taskId, updatedFields) {
+            if (!currentUserId) return showLoginPrompt("update tasks");
+            try {
+                const taskRef = doc(db, `artifacts/${appId}/users/${currentUserId}/tasks`, taskId);
+                await updateDoc(taskRef, updatedFields);
+                console.log("Task updated successfully:", taskId);
+            } catch (e) {
+                console.error("Error updating task: ", e);
+                showConfirmationModal("Error", "Failed to update task: " + e.message);
+            }
+        }
+
+        async function deleteTaskFromFirestore(taskId) {
+            if (!currentUserId) return showLoginPrompt("delete tasks");
+            try {
+                await deleteDoc(doc(db, `artifacts/${appId}/users/${currentUserId}/tasks`, taskId));
+                console.log("Task deleted successfully:", taskId);
+            } catch (e) {
+                console.error("Error deleting task: ", e);
+                showConfirmationModal("Error", "Failed to delete task: " + e.message);
+            }
+        }
+
+        async function saveCompanyDetailsToFirestore(companyName, details) {
+            if (!currentUserId) return showLoginPrompt("save company details");
+            try {
+                const docRef = doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName);
+                await setDoc(docRef, details, { merge: true });
+                console.log("Company details saved successfully for:", companyName);
+            } catch (e) {
+                console.error("Error saving company details: ", e);
+                showConfirmationModal("Error", "Failed to save company details: " + e.message);
+            }
+        }
+
+        async function addCompany(companyName) {
+            if (!currentUserId) return showLoginPrompt("add companies");
+            if (companyDetails.find(d => d.id.toLowerCase() === companyName.toLowerCase())) {
+                return showConfirmationModal("Company Exists", `Company '${companyName}' already exists.`);
+            }
+            try {
+                const newCompanyDetails = { contactPerson: '', phone: '', email: '', address: '', notes: '' };
+                await setDoc(doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName), newCompanyDetails);
+                console.log("Company added:", companyName);
+            } catch (e) {
+                console.error("Error adding company: ", e);
+                showConfirmationModal("Error", "Failed to add company: " + e.message);
+            }
+        }
+
+        async function deleteCompany(companyName) {
+            if (!currentUserId) return showLoginPrompt("delete companies");
+            const confirmed = await showConfirmationModal("Confirm Deletion", `Delete '${companyName}' and ALL its tasks? This cannot be undone.`);
+            if (confirmed) {
+                try {
+                    // 1. Delete company details (public)
+                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName));
+                    console.log(`Company details for '${companyName}' deleted.`);
+                    
+                    // 2. Delete associated tasks for the current user (private)
+                    const tasksQuery = query(collection(db, `artifacts/${appId}/users/${currentUserId}/tasks`), where("company", "==", companyName));
+                    const querySnapshot = await getDocs(tasksQuery);
+                    const deletePromises = querySnapshot.docs.map(taskDoc => deleteDoc(taskDoc.ref));
+                    await Promise.all(deletePromises);
+                    console.log(`All tasks for '${companyName}' by user '${currentUserId}' deleted.`);
+                } catch (e) {
+                    console.error("Error deleting company: ", e);
+                    showConfirmationModal("Error", "Failed to delete company: " + e.message);
+                }
+            }
+        }
+
+        // --- 6. UI RENDERING ---
+
+        function renderUI() {
+            updateTaskCounts();
+            populateCompanyDropdowns();
+            renderCompanySections();
+        }
+
         function updateTaskCounts() {
             const totalCount = tasks.length;
-            const pendingCount = tasks.filter(task => task.status === 'pending').length;
-            const inProgressCount = tasks.filter(task => task.status === 'in-progress').length;
-            const completedCount = tasks.filter(task => task.status === 'completed').length;
-
+            const pendingOrProgressCount = tasks.filter(t => t.status === 'pending' || t.status === 'in-progress').length;
+            const completedCount = tasks.filter(t => t.status === 'completed').length;
             document.getElementById('total-tasks').textContent = totalCount;
-            document.getElementById('pending-tasks').textContent = pendingCount + inProgressCount;
+            document.getElementById('pending-tasks').textContent = pendingOrProgressCount;
             document.getElementById('completed-tasks').textContent = completedCount;
         }
-        window.updateTaskCounts = updateTaskCounts; // Expose globally
 
-        /**
-         * Populates the company dropdowns and quick navigation links.
-         */
         function populateCompanyDropdowns() {
-            // Clear existing options except the default "Select Company"
+            const sortedCompanies = [...companyDetails].sort((a, b) => a.id.localeCompare(b.id));
+            
+            const currentTaskCompany = companyInput.value;
+            const currentDetailsCompany = companyDetailsSelect.value;
+            
             companyInput.innerHTML = '<option value="">Select Company</option>';
             companyDetailsSelect.innerHTML = '<option value="">Select Company</option>';
             quickNavLinks.innerHTML = '';
 
-            // Sort companyDetails alphabetically by company name
-            const sortedCompanies = [...companyDetails].sort((a, b) => a.id.localeCompare(b.id));
-
-            sortedCompanies.forEach(companyDetail => {
-                const option1 = document.createElement('option');
-                option1.value = companyDetail.id;
-                option1.textContent = companyDetail.id;
-                companyInput.appendChild(option1);
-
-                const option2 = document.createElement('option');
-                option2.value = companyDetail.id;
-                option2.textContent = companyDetail.id;
-                companyDetailsSelect.appendChild(option2);
-
+            sortedCompanies.forEach(company => {
+                companyInput.appendChild(new Option(company.id, company.id));
+                companyDetailsSelect.appendChild(new Option(company.id, company.id));
                 const navLink = document.createElement('a');
-                navLink.href = `#${companyDetail.id.replace(/\s+/g, '-')}`; // Create a valid ID for anchor
+                navLink.href = `#${company.id.replace(/\s+/g, '-')}`;
                 navLink.className = "px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all";
-                navLink.textContent = companyDetail.id;
+                navLink.textContent = company.id;
                 quickNavLinks.appendChild(navLink);
             });
+
+            companyInput.value = currentTaskCompany;
+            companyDetailsSelect.value = currentDetailsCompany;
         }
-        window.populateCompanyDropdowns = populateCompanyDropdowns; // Expose globally
 
-
-        // Render company sections with their respective tasks
         function renderCompanySections() {
-            const companySections = document.getElementById('company-sections');
             companySections.innerHTML = '';
+            const allCompanyNames = [...new Set([...tasks.map(t => t.company), ...companyDetails.map(d => d.id)])].sort();
 
-            // Get unique companies from the tasks and all available company details
-            // This ensures all companies (even those without tasks) are displayed.
-            const allCompanyNames = [...new Set([
-                ...tasks.map(task => task.company),
-                ...companyDetails.map(detail => detail.id)
-            ])].sort();
-
-            // Populate dropdowns and quick nav links
-            populateCompanyDropdowns();
+            if (allCompanyNames.length === 0) {
+                const message = currentUserId 
+                    ? "No companies found. Add a new company to get started!"
+                    : "Please log in to view and manage tasks.";
+                companySections.innerHTML = `<div class="text-center py-10 bg-white rounded-lg shadow-md"><p class="text-gray-500">${message}</p></div>`;
+                return;
+            }
 
             allCompanyNames.forEach(company => {
-                // Filter tasks for this company based on current status filter
                 let companyTasks = tasks.filter(task => task.company === company);
-
                 if (currentStatus !== 'all') {
                     companyTasks = companyTasks.filter(task => task.status === currentStatus);
                 }
+                if (companyTasks.length === 0 && currentStatus !== 'all') return;
 
-                // If no tasks are found for this company under the current filter AND it's not the 'all' filter, skip rendering the section.
-                if (companyTasks.length === 0 && currentStatus !== 'all') {
-                    return;
-                }
-
-                // Get company colors
+                const details = companyDetails.find(d => d.id === company) || {};
                 const colors = companyColors[company] || { bg: "bg-gray-50", border: "border-gray-200", header: "from-gray-500 to-gray-700" };
+                const sectionId = company.replace(/\s+/g, '-');
 
-                // Get company details
-                // Company details are stored with company name as ID in public collection
-                const details = companyDetails.find(d => d.id === company) || {
-                    id: company,
-                    contactPerson: '',
-                    phone: '',
-                    email: '',
-                    address: '',
-                    notes: ''
-                };
-
-                // Create company section
                 const section = document.createElement('div');
                 section.className = `company-section ${colors.bg} rounded-xl shadow-md border ${colors.border} overflow-hidden company-card`;
-                section.id = company.replace(/\s+/g, '-'); // Ensure ID is valid for anchor links
+                section.id = sectionId;
 
-                // Company header
-                const header = document.createElement('div');
-                header.className = `company-header bg-gradient-to-r ${colors.header} p-4 text-white`;
-                header.innerHTML = `
-                    <div class="flex justify-between items-center">
+                section.innerHTML = `
+                    <div class="company-header bg-gradient-to-r ${colors.header} p-4 text-white flex justify-between items-center">
                         <h2 class="text-xl font-bold">${company}</h2>
                         <div class="flex items-center gap-2">
-                            <span class="bg-white text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
-                                ${companyTasks.length} Task${companyTasks.length !== 1 ? 's' : ''}
-                            </span>
-                            <button class="delete-company-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium" data-company="${company}">
-                                Delete Company
-                            </button>
+                            <span class="bg-white text-gray-800 px-3 py-1 rounded-full text-sm font-medium">${companyTasks.length} Task${companyTasks.length !== 1 ? 's' : ''}</span>
+                            <button class="delete-company-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium" data-company="${company}">Delete</button>
+                        </div>
+                    </div>
+                    <div class="flex border-b bg-white">
+                        <button class="tab-button tab-active px-4 py-2 font-medium text-sm" data-tab="tasks-${sectionId}">Tasks</button>
+                        <button class="tab-button px-4 py-2 font-medium text-sm" data-tab="details-${sectionId}">Details</button>
+                    </div>
+                    <div id="tasks-${sectionId}" class="tab-content"></div>
+                    <div id="details-${sectionId}" class="tab-content hidden p-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><h3 class="text-sm font-medium text-gray-500">Contact Person</h3><p class="text-base font-medium text-gray-900">${details.contactPerson || 'N/A'}</p></div>
+                            <div><h3 class="text-sm font-medium text-gray-500">Phone</h3><p class="text-base font-medium text-gray-900">${details.phone || 'N/A'}</p></div>
+                            <div><h3 class="text-sm font-medium text-gray-500">Email</h3><p class="text-base font-medium text-gray-900">${details.email || 'N/A'}</p></div>
+                            <div class="md:col-span-2"><h3 class="text-sm font-medium text-gray-500">Address</h3><p class="text-base font-medium text-gray-900">${details.address || 'N/A'}</p></div>
+                            <div class="md:col-span-2"><h3 class="text-sm font-medium text-gray-500">Notes</h3><p class="text-base font-medium text-gray-900 whitespace-pre-line">${details.notes || 'N/A'}</p></div>
+                            <div class="md:col-span-2"><button class="edit-details-btn px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 text-sm font-medium" data-company="${company}">Edit Details</button></div>
                         </div>
                     </div>
                 `;
-                section.appendChild(header);
-
-                // Tabs for Tasks and Details
-                const tabs = document.createElement('div');
-                tabs.className = 'flex border-b bg-white';
-                tabs.innerHTML = `
-                    <button class="tab-button tab-active px-4 py-2 font-medium text-sm" data-tab="tasks-${company}">Tasks</button>
-                    <button class="tab-button px-4 py-2 font-medium text-sm" data-tab="details-${company}">Company Details</button>
-                `;
-                section.appendChild(tabs);
-
-                // Tasks tab content
-                const tasksContent = document.createElement('div');
-                tasksContent.className = 'tab-content';
-                tasksContent.id = `tasks-${company}`;
-
-                if (companyTasks.length > 0) {
-                    tasksContent.innerHTML = `
-                        <div class="overflow-x-auto p-4">
-                            <table class="min-w-full text-sm text-left rounded-lg overflow-hidden">
-                                <thead class="text-xs uppercase bg-white bg-opacity-80">
-                                    <tr>
-                                        <th scope="col" class="px-6 py-3">Task</th>
-                                        <th scope="col" class="px-6 py-3">PIC</th>
-                                        <th scope="col" class="px-6 py-3">Deadline</th>
-                                        <th scope="col" class="px-6 py-3">Status</th>
-                                        <th scope="col" class="px-6 py-3">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="task-table-${company.replace(/\s+/g, '-')}" class="divide-y divide-gray-200">
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                } else {
-                    tasksContent.innerHTML = `
-                        <div class="text-center py-8">
-                            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                            </svg>
-                            <h3 class="mt-2 text-sm font-medium text-gray-900">No tasks found</h3>
-                            <p class="mt-1 text-sm text-gray-500">Get started by creating a new task for this company.</p>
-                        </div>
-                    `;
-                }
-                section.appendChild(tasksContent);
-
-                const detailsContent = document.createElement('div');
-                detailsContent.className = 'tab-content hidden p-4';
-                detailsContent.id = `details-${company}`;
-
-                detailsContent.innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <h3 class="text-sm font-medium text-gray-500">Contact Person</h3>
-                            <p class="text-base font-medium text-gray-900">${details.contactPerson || 'Not specified'}</p>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-medium text-gray-500">Phone</h3>
-                            <p class="text-base font-medium text-gray-900">${details.phone || 'Not specified'}</p>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-medium text-gray-500">Email</h3>
-                            <p class="text-base font-medium text-gray-900">${details.email || 'Not specified'}</p>
-                        </div>
-                        <div class="md:col-span-2">
-                            <h3 class="text-sm font-medium text-gray-500">Address</h3>
-                            <p class="text-base font-medium text-gray-900">${details.address || 'Not specified'}</p>
-                        </div>
-                        <div class="md:col-span-2">
-                            <h3 class="text-sm font-medium text-gray-500">Notes</h3>
-                            <p class="text-base font-medium text-gray-900 whitespace-pre-line">${details.notes || 'No notes available'}</p>
-                        </div>
-                        <div class="md:col-span-2">
-                            <button class="edit-details-btn px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-all text-sm font-medium" data-company="${company}">
-                                Edit Details
-                            </button>
-                        </div>
-                    </div>
-                `;
-                section.appendChild(detailsContent);
-
                 companySections.appendChild(section);
-
-                if (companyTasks.length > 0) {
-                    const taskTable = document.getElementById(`task-table-${company.replace(/\s+/g, '-')}`);
-
-                    companyTasks.forEach(task => {
-                        const row = document.createElement('tr');
-                        row.className = 'bg-white bg-opacity-60 border-b hover:bg-opacity-100 transition-all';
-                        row.dataset.id = task.id;
-
-                        let statusClass = '';
-                        let statusText = '';
-
-                        switch(task.status) {
-                            case 'pending': statusClass = 'status-pending'; statusText = 'Pending'; break;
-                            case 'in-progress': statusClass = 'status-in-progress'; statusText = 'In Progress'; break;
-                            case 'completed': statusClass = 'status-completed'; statusText = 'Completed'; break;
-                        }
-
-                        row.innerHTML = `
-                            <td class="px-6 py-4 font-medium">${task.task}</td>
-                            <td class="px-6 py-4">${task.pic || '-'}</td>
-                            <td class="px-6 py-4">${task.deadline || '-'}</td>
-                            <td class="px-6 py-4">
-                                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusClass}">
-                                    ${statusText}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 flex gap-2">
-                                <button class="edit-btn text-blue-600 hover:text-blue-800" data-id="${task.id}">Edit</button>
-                                <button class="delete-btn text-red-600 hover:text-red-800" data-id="${task.id}">Delete</button>
-                                <button class="status-btn text-green-600 hover:text-green-800" data-id="${task.id}" data-status="${task.status}">
-                                    ${task.status === 'completed' ? 'Mark Pending' : 'Mark Complete'}
-                                </button>
-                            </td>
-                        `;
-                        taskTable.appendChild(row);
-                    });
-                }
+                renderTaskTable(section.querySelector(`#tasks-${sectionId}`), companyTasks);
             });
             addEventListenersToDynamicElements();
         }
-        window.renderCompanySections = renderCompanySections; // Expose globally
 
-        // Add event listeners to dynamically created elements
+        function renderTaskTable(container, tasksToRender) {
+            if (tasksToRender.length === 0) {
+                container.innerHTML = `<div class="text-center py-8"><svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg><h3 class="mt-2 text-sm font-medium text-gray-900">No tasks found</h3><p class="mt-1 text-sm text-gray-500">No tasks match the current filter.</p></div>`;
+                return;
+            }
+            const tableHTML = `
+                <div class="overflow-x-auto p-4">
+                    <table class="min-w-full text-sm text-left rounded-lg overflow-hidden">
+                        <thead class="text-xs uppercase bg-white bg-opacity-80"><tr>
+                            <th scope="col" class="px-6 py-3">Task</th><th scope="col" class="px-6 py-3">PIC</th>
+                            <th scope="col" class="px-6 py-3">Deadline</th><th scope="col" class="px-6 py-3">Status</th>
+                            <th scope="col" class="px-6 py-3">Actions</th>
+                        </tr></thead>
+                        <tbody class="divide-y divide-gray-200">
+                            ${tasksToRender.map(task => {
+                                const statusClasses = { pending: 'status-pending', 'in-progress': 'status-in-progress', completed: 'status-completed' };
+                                const statusTexts = { pending: 'Pending', 'in-progress': 'In Progress', completed: 'Completed' };
+                                return `
+                                <tr class="bg-white bg-opacity-60 border-b hover:bg-opacity-100 transition-all" data-id="${task.id}">
+                                    <td class="px-6 py-4 font-medium">${task.task}</td><td class="px-6 py-4">${task.pic || '-'}</td>
+                                    <td class="px-6 py-4">${task.deadline || '-'}</td>
+                                    <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusClasses[task.status]}">${statusTexts[task.status]}</span></td>
+                                    <td class="px-6 py-4 flex gap-2">
+                                        <button class="edit-btn text-blue-600 hover:text-blue-800" data-id="${task.id}">Edit</button>
+                                        <button class="delete-btn text-red-600 hover:text-red-800" data-id="${task.id}">Delete</button>
+                                        <button class="status-btn text-green-600 hover:text-green-800" data-id="${task.id}">${task.status === 'completed' ? 'Mark Pending' : 'Mark Complete'}</button>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+            container.innerHTML = tableHTML;
+        }
+
+        // --- 7. EVENT HANDLERS & LISTENERS ---
+
         function addEventListenersToDynamicElements() {
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-                btn.addEventListener('click', handleEdit);
-            });
-            document.querySelectorAll('.delete-btn').forEach(btn => {
-                btn.addEventListener('click', handleDelete);
-            });
-            document.querySelectorAll('.status-btn').forEach(btn => {
-                btn.addEventListener('click', handleStatusToggle);
-            });
-            document.querySelectorAll('.tab-button').forEach(btn => {
-                btn.addEventListener('click', handleTabClick);
-            });
-            document.querySelectorAll('.edit-details-btn').forEach(btn => {
-                btn.addEventListener('click', handleEditDetails);
-            });
-            document.querySelectorAll('.delete-company-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const companyToDelete = e.target.dataset.company;
-                    deleteCompany(companyToDelete);
-                });
-            });
-        }
-        window.addEventListenersToDynamicElements = addEventListenersToDynamicElements; // Expose globally
-
-
-        // Handle tab click
-        function handleTabClick(e) {
-            const tabId = e.target.dataset.tab;
-            const parentSection = e.target.closest('.company-section');
-
-            if (!parentSection) return;
-
-            const tabButtons = parentSection.querySelectorAll('.tab-button');
-            const tabContents = parentSection.querySelectorAll('.tab-content');
-
-            tabButtons.forEach(btn => {
-                btn.classList.remove('tab-active');
-            });
-            e.target.classList.add('tab-active');
-
-            tabContents.forEach(content => {
-                if (content.id === tabId) {
-                    content.classList.remove('hidden');
-                } else {
-                    content.classList.add('hidden');
-                }
-            });
+            document.querySelectorAll('.edit-btn').forEach(b => b.onclick = handleEdit);
+            document.querySelectorAll('.delete-btn').forEach(b => b.onclick = handleDelete);
+            document.querySelectorAll('.status-btn').forEach(b => b.onclick = handleStatusToggle);
+            document.querySelectorAll('.tab-button').forEach(b => b.onclick = handleTabClick);
+            document.querySelectorAll('.edit-details-btn').forEach(b => b.onclick = handleEditDetails);
+            document.querySelectorAll('.delete-company-btn').forEach(b => b.onclick = e => deleteCompany(e.target.dataset.company));
         }
 
-        // Handle edit details button click
-        function handleEditDetails(e) {
-            const company = e.target.dataset.company;
-            companyDetailsSelect.value = company;
-
-            const event = new Event('change');
-            companyDetailsSelect.dispatchEvent(event);
-
-            companyDetailsForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        // Handle adding/updating a task
-        addTaskForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to add or update tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Add Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const company = companyInput.value;
-            const task = taskInput.value.trim();
-            const pic = picInput.value.trim();
-            const deadline = deadlineInput.value;
-            const status = statusInput.value;
-
-            if (!company || !task) {
-                await showConfirmationModal("Missing Information", "Please select a company and enter a task description.");
-                return;
-            }
-
-            const taskData = { company, task, pic, deadline, status };
-
-            if (editingTaskId) {
-                await updateTaskInFirestore(editingTaskId, taskData);
-                editingTaskId = null;
-                addUpdateTaskBtn.textContent = 'Add Task';
-                taskFormTitle.textContent = 'Add New Task';
-                cancelEditTaskBtn.classList.add('hidden');
-            } else {
-                await addTaskToFirestore(taskData);
-            }
-
-            addTaskForm.reset();
-        });
-
-        // Handle canceling task edit
-        cancelEditTaskBtn.addEventListener('click', () => {
-            editingTaskId = null;
-            addTaskForm.reset();
-            addUpdateTaskBtn.textContent = 'Add Task';
-            taskFormTitle.textContent = 'Add New Task';
-            cancelEditTaskBtn.classList.add('hidden');
-        });
-
-        // Handle editing a task
         function handleEdit(e) {
-            if (!userId) {
-                showConfirmationModal("Login Required", "Please log in to edit tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Edit Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
+            if (!currentUserId) return showLoginPrompt("edit tasks");
             const taskId = e.target.dataset.id;
             const taskToEdit = tasks.find(task => task.id === taskId);
-
             if (taskToEdit) {
                 companyInput.value = taskToEdit.company;
                 taskInput.value = taskToEdit.task;
                 picInput.value = taskToEdit.pic;
                 deadlineInput.value = taskToEdit.deadline;
                 statusInput.value = taskToEdit.status;
-
                 editingTaskId = taskId;
                 addUpdateTaskBtn.textContent = 'Update Task';
                 taskFormTitle.textContent = 'Edit Task';
                 cancelEditTaskBtn.classList.remove('hidden');
-
                 addTaskForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
 
-        // Handle deleting a task
         async function handleDelete(e) {
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to delete tasks.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Delete Task';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
+            if (!currentUserId) return showLoginPrompt("delete tasks");
             const taskId = e.target.dataset.id;
-
-            const confirmed = await showConfirmationModal(
-                "Confirm Deletion",
-                "Are you sure you want to delete this task? This action cannot be undone."
-            );
-
+            const confirmed = await showConfirmationModal("Confirm Deletion", "Are you sure you want to delete this task?");
             if (confirmed) {
                 await deleteTaskFromFirestore(taskId);
             }
         }
 
-        // Handle toggling task status
         async function handleStatusToggle(e) {
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to change task status.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Change Status';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
+            if (!currentUserId) return showLoginPrompt("change task status");
             const taskId = e.target.dataset.id;
-            const taskIndex = tasks.findIndex(task => task.id === taskId);
-
-            if (taskIndex > -1) {
-                let newStatus;
-                if (tasks[taskIndex].status === 'completed') {
-                    newStatus = 'pending';
-                } else {
-                    newStatus = 'completed';
-                }
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                const newStatus = task.status === 'completed' ? 'pending' : 'completed';
                 await updateTaskInFirestore(taskId, { status: newStatus });
             }
         }
 
-        // Filter functionality
+        function handleTabClick(e) {
+            const tabId = e.target.dataset.tab;
+            const parentSection = e.target.closest('.company-section');
+            parentSection.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('tab-active'));
+            e.target.classList.add('tab-active');
+            parentSection.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.toggle('hidden', content.id !== tabId);
+            });
+        }
+
+        function handleEditDetails(e) {
+            const company = e.target.dataset.company;
+            companyDetailsSelect.value = company;
+            companyDetailsSelect.dispatchEvent(new Event('change'));
+            companyDetailsForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // Main form submissions
+        addTaskForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUserId) return showLoginPrompt("add tasks");
+            const taskData = {
+                company: companyInput.value,
+                task: taskInput.value.trim(),
+                pic: picInput.value.trim(),
+                deadline: deadlineInput.value,
+                status: statusInput.value
+            };
+            if (!taskData.company || !taskData.task) {
+                return showConfirmationModal("Missing Information", "Please select a company and enter a task description.");
+            }
+            if (editingTaskId) {
+                await updateTaskInFirestore(editingTaskId, taskData);
+            } else {
+                await addTaskToFirestore(taskData);
+            }
+            resetTaskForm();
+        });
+
+        addCompanyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUserId) return showLoginPrompt("add a company");
+            const newCompanyName = newCompanyNameInput.value.trim();
+            if (newCompanyName) {
+                await addCompany(newCompanyName);
+                newCompanyNameInput.value = '';
+            } else {
+                showConfirmationModal("Missing Information", "Please enter a company name.");
+            }
+        });
+
+        companyDetailsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUserId) return showLoginPrompt("save company details");
+            const company = companyDetailsSelect.value;
+            if (!company) {
+                return showConfirmationModal("Missing Information", "Please select a company.");
+            }
+            const detailsData = {
+                contactPerson: contactPersonInput.value.trim(),
+                phone: phoneInput.value.trim(),
+                email: emailInput.value.trim(),
+                address: addressInput.value.trim(),
+                notes: notesInput.value.trim()
+            };
+            await saveCompanyDetailsToFirestore(company, detailsData);
+            companyDetailsForm.reset();
+        });
+        
+        // Filter button listeners
         document.querySelectorAll('.filter-btn').forEach(button => {
             button.addEventListener('click', function() {
                 document.querySelectorAll('.filter-btn').forEach(btn => {
                     btn.classList.remove('bg-indigo-600', 'text-white');
                     btn.classList.add('bg-gray-100', 'hover:bg-gray-200');
                 });
-                this.classList.remove('bg-gray-100', 'hover:bg-gray-200');
                 this.classList.add('bg-indigo-600', 'text-white');
-
-                if (this.id === 'all-filter') {
-                    currentStatus = 'all';
-                } else if (this.id === 'pending-filter') {
-                    currentStatus = 'pending';
-                } else if (this.id === 'progress-filter') {
-                    currentStatus = 'in-progress';
-                } else if (this.id === 'completed-filter') {
-                    currentStatus = 'completed';
-                }
+                this.classList.remove('bg-gray-100', 'hover:bg-gray-200');
+                currentStatus = this.id.replace('-filter', '');
                 renderCompanySections();
             });
         });
 
-        // Handle saving company details
-        companyDetailsForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            if (!userId) {
-                await showConfirmationModal("Login Required", "Please log in to save company details.").then(() => {
-                    if (authModal) authModal.style.display = 'flex';
-                    if (authModalTitle) authModalTitle.textContent = 'Login to Save Company Details';
-                    if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                    window.currentAuthMode = 'login';
-                    if (authForm) authForm.reset();
-                });
-                return;
-            }
-
-            const company = companyDetailsSelect.value;
-            const contactPerson = contactPersonInput.value.trim();
-            const phone = phoneInput.value.trim();
-            const email = emailInput.value.trim();
-            const address = addressInput.value.trim();
-            const notes = notesInput.value.trim();
-
-            if (!company) {
-                await showConfirmationModal("Missing Information", "Please select a company to save details for.");
-                return;
-            }
-
-            const detailsData = {
-                contactPerson, phone, email, address, notes
-            };
-
-            await saveCompanyDetailsToFirestore(company, detailsData);
-            companyDetailsForm.reset();
-            companyDetailsSelect.value = '';
-        });
-
-        // --- Auth Modal Logic ---
-        window.currentAuthMode = '';
-
-        loginBtn.addEventListener('click', () => {
-            authModalTitle.textContent = 'Login';
-            authSubmitBtn.textContent = 'Login';
-            window.currentAuthMode = 'login';
-            authForm.reset();
-            authModal.style.display = 'flex';
-        });
-
-        signupBtn.addEventListener('click', () => {
-            authModalTitle.textContent = 'Sign Up';
-            authSubmitBtn.textContent = 'Sign Up';
-            window.currentAuthMode = 'signup';
-            authForm.reset();
-            authModal.style.display = 'flex';
-        });
-
+        // Auth modal listeners
+        loginBtn.addEventListener('click', () => openAuthModal('login'));
+        signupBtn.addEventListener('click', () => openAuthModal('signup'));
         logoutBtn.addEventListener('click', async () => {
             const confirmed = await showConfirmationModal("Confirm Logout", "Are you sure you want to log out?");
             if (confirmed) {
                 try {
-                    await signOut(getAuth());
-                    console.log("User signed out.");
+                    await signOut(auth);
                 } catch (error) {
-                    console.error("Error signing out:", error);
-                    await showConfirmationModal("Logout Error", `Failed to log out: ${error.message}`);
+                    console.error("Logout Error:", error);
+                    showConfirmationModal("Logout Error", `Failed to log out: ${error.message}`);
                 }
             }
         });
@@ -1912,135 +819,102 @@
             e.preventDefault();
             const email = authEmailInput.value;
             const password = authPasswordInput.value;
-
             try {
-                if (window.currentAuthMode === 'login') {
-                    await signInWithEmailAndPassword(getAuth(), email, password);
-                    console.log("User logged in successfully!");
-                } else if (window.currentAuthMode === 'signup') {
-                    await createUserWithEmailAndPassword(getAuth(), email, password);
-                    console.log("User signed up successfully!");
+                if (currentAuthMode === 'login') {
+                    await signInWithEmailAndPassword(auth, email, password);
+                } else {
+                    await createUserWithEmailAndPassword(auth, email, password);
                 }
-                authModal.style.display = 'none';
+                closeAuthModal();
             } catch (error) {
                 console.error("Authentication error:", error);
-                let errorMessage = "An unknown error occurred.";
-                if (error.code) {
-                    switch(error.code) {
-                        case 'auth/email-already-in-use': errorMessage = 'This email is already in use. Try logging in.'; break;
-                        case 'auth/invalid-email': errorMessage = 'Invalid email address format.'; break;
-                        case 'auth/weak-password': errorMessage = 'Password should be at least 6 characters.'; break;
-                        case 'auth/user-not-found':
-                        case 'auth/wrong-password': errorMessage = 'Invalid email or password.'; break;
-                        default: errorMessage = error.message;
-                    }
+                let userMessage = error.message;
+                if (error.code === 'auth/operation-not-allowed') {
+                    userMessage = "Operation not allowed. Please ensure that Email/Password and Anonymous sign-in providers are enabled in your Firebase console's Authentication settings.";
                 }
-                await showConfirmationModal("Authentication Failed", errorMessage);
+                showConfirmationModal("Authentication Failed", userMessage);
             }
         });
 
-        // Close auth modal when clicking 'x' or outside
-        authModalCloseButton.addEventListener('click', () => {
-            authModal.style.display = 'none';
-        });
-        window.addEventListener('click', (event) => {
-            if (event.target == authModal) {
-                authModal.style.display = 'none';
-            }
-        });
+        // --- 8. HELPER FUNCTIONS ---
 
-        // Handle Add Company form submission
-        addCompanyForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const newCompanyName = newCompanyNameInput.value.trim();
-            if (newCompanyName) {
-                await addCompany(newCompanyName);
-                newCompanyNameInput.value = '';
-            } else {
-                await showConfirmationModal("Missing Information", "Please enter a company name.");
-            }
-        });
-
-
-        // Initialize the app on window load
-        window.onload = function () {
-            // Assign DOM elements to variables after the DOM is fully loaded
-            companyDetailsSelect = document.getElementById('company-details-select');
-            contactPersonInput = document.getElementById('contact-person-input');
-            phoneInput = document.getElementById('phone-input');
-            emailInput = document.getElementById('email-input');
-            addressInput = document.getElementById('address-input'); // Corrected typo here
-            notesInput = document.getElementById('notes-input');
-            addTaskForm = document.getElementById('add-task-form');
-            companyInput = document.getElementById('company-input');
-            taskInput = document.getElementById('task-input');
-            picInput = document.getElementById('pic-input');
-            deadlineInput = document.getElementById('deadline-input');
-            statusInput = document.getElementById('status-input');
-            addUpdateTaskBtn = document.getElementById('add-update-task-btn');
-            cancelEditTaskBtn = document.getElementById('cancel-edit-task-btn');
-            taskFormTitle = document.getElementById('task-form-title');
-            companyDetailsForm = document.getElementById('company-details-form');
-            confirmationModal = document.getElementById('confirmationModal');
-            modalTitle = document.getElementById('modal-title');
-            modalMessage = document.getElementById('modal-message');
-            cancelConfirmBtn = document.getElementById('cancelConfirm');
-            proceedConfirmBtn = document.getElementById('proceedConfirm');
-            closeButton = confirmationModal.querySelector('.close-button');
-            loginBtn = document.getElementById('login-btn');
-            signupBtn = document.getElementById('signup-btn');
-            logoutBtn = document.getElementById('logout-btn');
-            userEmailDisplay = document.getElementById('user-email-display');
-            authModal = document.getElementById('auth-modal');
-            authModalTitle = document.getElementById('auth-modal-title');
-            authForm = document.getElementById('auth-form');
-            authEmailInput = document.getElementById('auth-email');
-            authPasswordInput = document.getElementById('auth-password');
-            authSubmitBtn = document.getElementById('auth-submit-btn');
-            authModalCloseButton = authModal.querySelector('.close-button');
-            addCompanyForm = document.getElementById('add-company-form');
-            newCompanyNameInput = document.getElementById('new-company-name-input');
-            quickNavLinks = document.getElementById('quick-nav-links');
-
-
-            // Re-assign local variables to window properties after window.onload fires
-            db = window.db;
-            userId = window.userId;
-            userEmail = window.userEmail;
-            isAuthReady = window.isAuthReady;
-            tasks = window.tasks;
-            companyDetails = window.companyDetails;
-
-
-            // Set up company details form change handler to load data
-            companyDetailsSelect.addEventListener('change', function() {
-                const selectedCompany = this.value;
-                if (selectedCompany) {
-                    const details = companyDetails.find(d => d.id === selectedCompany);
-                    if (details) {
-                        contactPersonInput.value = details.contactPerson || '';
-                        phoneInput.value = details.phone || '';
-                        emailInput.value = details.email || '';
-                        addressInput.value = details.address || '';
-                        notesInput.value = details.notes || '';
-                    } else {
-                        contactPersonInput.value = '';
-                        phoneInput.value = '';
-                        emailInput.value = '';
-                        addressInput.value = '';
-                        notesInput.value = '';
-                    }
-                } else {
-                    contactPersonInput.value = '';
-                    phoneInput.value = '';
-                    emailInput.value = '';
-                    addressInput.value = '';
-                    notesInput.value = '';
-                }
-            });
-
-            displayUserId();
+        function resetTaskForm() {
+            editingTaskId = null;
+            addTaskForm.reset();
+            addUpdateTaskBtn.textContent = 'Add Task';
+            taskFormTitle.textContent = 'Add New Task';
+            cancelEditTaskBtn.classList.add('hidden');
         }
+        cancelEditTaskBtn.addEventListener('click', resetTaskForm);
+
+        function openAuthModal(mode) {
+            currentAuthMode = mode;
+            authModalTitle.textContent = mode === 'login' ? 'Login' : 'Sign Up';
+            authSubmitBtn.textContent = mode === 'login' ? 'Login' : 'Sign Up';
+            authForm.reset();
+            authModal.style.display = 'flex';
+        }
+
+        function closeAuthModal() {
+            authModal.style.display = 'none';
+        }
+        authModalCloseButton.addEventListener('click', closeAuthModal);
+
+        function showLoginPrompt(action) {
+            showConfirmationModal("Authentication Required", `Please log in to ${action}.`).then(confirmed => {
+                if (confirmed) openAuthModal('login');
+            });
+            return false; // To indicate failure
+        }
+
+        function showConfirmationModal(title, message) {
+            return new Promise(resolve => {
+                modalTitle.textContent = title;
+                modalMessage.textContent = message;
+                confirmationModal.style.display = 'flex';
+                
+                const cleanup = () => {
+                    proceedConfirmBtn.removeEventListener('click', onProceed);
+                    cancelConfirmBtn.removeEventListener('click', onCancel);
+                    closeButton.removeEventListener('click', onCancel);
+                };
+
+                const onProceed = () => {
+                    confirmationModal.style.display = 'none';
+                    cleanup();
+                    resolve(true);
+                };
+                const onCancel = () => {
+                    confirmationModal.style.display = 'none';
+                    cleanup();
+                    resolve(false);
+                };
+
+                proceedConfirmBtn.addEventListener('click', onProceed);
+                cancelConfirmBtn.addEventListener('click', onCancel);
+                closeButton.addEventListener('click', onCancel);
+            });
+        }
+        
+        companyDetailsSelect.addEventListener('change', function() {
+            const selectedCompany = this.value;
+            const details = companyDetails.find(d => d.id === selectedCompany) || {};
+            contactPersonInput.value = details.contactPerson || '';
+            phoneInput.value = details.phone || '';
+            emailInput.value = details.email || '';
+            addressInput.value = details.address || '';
+            notesInput.value = details.notes || '';
+        });
+
+        // Close modals on outside click
+        window.addEventListener('click', (event) => {
+            if (event.target == authModal) closeAuthModal();
+            if (event.target == confirmationModal) confirmationModal.style.display = 'none';
+        });
+
+        // Kick off the application
+        initializeAppAndAuth();
+
     </script>
 </body>
 </html>
