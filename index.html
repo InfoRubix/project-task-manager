@@ -235,6 +235,22 @@
             <p class="mt-4">Please ensure the application is correctly set up with valid Firebase project credentials.</p>
         </div>
     </div>
+    
+    <!-- Auth Provider Error Message -->
+    <div id="auth-provider-error" class="hidden container mx-auto px-4 py-8 max-w-2xl">
+        <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-6 rounded-lg shadow-md">
+            <h2 class="text-2xl font-bold mb-2">Action Required: Enable Sign-In Methods</h2>
+            <p>The application cannot sign you in because the necessary authentication methods are disabled in your Firebase project.</p>
+            <p class="mt-4"><b>To fix this:</b></p>
+            <ol class="list-decimal list-inside mt-2 space-y-1">
+                <li>Go to your <a href="https://console.firebase.google.com/" target="_blank" class="underline font-medium hover:text-yellow-800">Firebase Console</a>.</li>
+                <li>Select your project: <b id="error-project-id"></b></li>
+                <li>In the left-hand menu, go to <b>Build</b> > <b>Authentication</b>.</li>
+                <li>Click the <b>Sign-in method</b> tab.</li>
+                <li>Enable both <b>Email/Password</b> and <b>Anonymous</b> sign-in providers.</li>
+            </ol>
+        </div>
+    </div>
 
 
     <!-- Custom Confirmation Modal -->
@@ -279,6 +295,7 @@
         // --- 1. CONFIGURATION AND INITIALIZATION ---
         const appContainer = document.getElementById('app-container');
         const configErrorContainer = document.getElementById('config-error');
+        const authProviderErrorContainer = document.getElementById('auth-provider-error');
 
         // Use environment variables if available, otherwise use your provided config.
         const firebaseConfig = typeof __firebase_config !== 'undefined'
@@ -415,7 +432,13 @@
                     }
                 } catch (error) {
                     console.error("Error during initial automatic sign-in:", error);
-                    showConfirmationModal("Authentication Error", "Could not sign you in automatically. Please try logging in manually. Error: " + error.message);
+                    if (error.code === 'auth/operation-not-allowed') {
+                        appContainer.classList.add('hidden');
+                        document.getElementById('error-project-id').textContent = firebaseConfig.projectId;
+                        authProviderErrorContainer.classList.remove('hidden');
+                    } else {
+                        showConfirmationModal("Authentication Error", "Could not sign you in automatically. Please try logging in manually. Error: " + error.message);
+                    }
                 }
             }
         }
