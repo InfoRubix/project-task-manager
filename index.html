@@ -74,6 +74,16 @@
             text-decoration: none;
             cursor: pointer;
         }
+        /* Calendar Styles */
+        .calendar-task {
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 9999px;
+            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     </style>
 </head>
 <body>
@@ -89,54 +99,90 @@
                 <span id="user-email-display" class="text-gray-700 self-center font-medium"></span>
             </div>
 
+            <!-- View Switcher -->
+            <div class="mb-8 border-b border-gray-200">
+                <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                    <button id="list-view-btn" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500">
+                        Company View
+                    </button>
+                    <button id="calendar-view-btn" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                        Calendar View
+                    </button>
+                </nav>
+            </div>
 
-            <!-- Quick Navigation -->
-            <div class="mb-8">
-                <h2 class="text-lg font-semibold text-gray-700 mb-3">Jump to Company:</h2>
-                <div id="quick-nav-links" class="flex flex-wrap gap-2">
-                    <!-- Quick navigation links will be dynamically populated here -->
+            <!-- Company Sections (List View) -->
+            <div id="list-view-content">
+                <!-- Quick Navigation -->
+                <div class="mb-8">
+                    <h2 class="text-lg font-semibold text-gray-700 mb-3">Jump to Company:</h2>
+                    <div id="quick-nav-links" class="flex flex-wrap gap-2">
+                        <!-- Quick navigation links will be dynamically populated here -->
+                    </div>
+                </div>
+
+                <!-- Task Summary -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div class="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
+                        <h3 class="text-lg font-semibold text-indigo-800">Total Tasks</h3>
+                        <p id="total-tasks" class="text-3xl font-bold text-indigo-600">0</p>
+                    </div>
+                    <div class="bg-amber-50 rounded-lg p-4 border border-amber-100">
+                        <h3 class="text-lg font-semibold text-amber-800">Pending & In Progress</h3>
+                        <p id="pending-tasks" class="text-3xl font-bold text-amber-600">0</p>
+                    </div>
+                    <div class="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
+                        <h3 class="text-lg font-semibold text-emerald-800">Completed Tasks</h3>
+                        <p id="completed-tasks" class="text-3xl font-bold text-emerald-600">0</p>
+                    </div>
+                </div>
+
+                <!-- Filter -->
+                <div class="mb-8">
+                    <h2 class="text-lg font-semibold text-gray-700 mb-3">Filter by Status:</h2>
+                    <div class="flex flex-wrap gap-3">
+                        <button id="all-filter" class="filter-btn bg-indigo-600 text-white px-4 py-2 rounded-full text-sm font-medium transition-all">
+                            All Status
+                        </button>
+                        <button id="pending-filter" class="filter-btn bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-medium transition-all">
+                            Pending
+                        </button>
+                        <button id="progress-filter" class="filter-btn bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-medium transition-all">
+                            In Progress
+                        </button>
+                        <button id="completed-filter" class="filter-btn bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-medium transition-all">
+                            Completed
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Company Sections -->
+                <div id="company-sections" class="space-y-8">
+                    <!-- Company sections will be populated here -->
+                </div>
+            </div>
+            
+            <!-- Calendar View -->
+            <div id="calendar-view" class="hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <button id="prev-month-btn" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">&lt; Prev</button>
+                    <h2 id="month-year-header" class="text-xl font-bold text-gray-800"></h2>
+                    <button id="next-month-btn" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">Next &gt;</button>
+                </div>
+                <div class="grid grid-cols-7 gap-2 text-center font-semibold text-gray-600 mb-2">
+                    <div>Sun</div>
+                    <div>Mon</div>
+                    <div>Tue</div>
+                    <div>Wed</div>
+                    <div>Thu</div>
+                    <div>Fri</div>
+                    <div>Sat</div>
+                </div>
+                <div id="calendar-grid" class="grid grid-cols-7 gap-2">
+                    <!-- Calendar days will be populated here -->
                 </div>
             </div>
 
-            <!-- Task Summary -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div class="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
-                    <h3 class="text-lg font-semibold text-indigo-800">Total Tasks</h3>
-                    <p id="total-tasks" class="text-3xl font-bold text-indigo-600">0</p>
-                </div>
-                <div class="bg-amber-50 rounded-lg p-4 border border-amber-100">
-                    <h3 class="text-lg font-semibold text-amber-800">Pending & In Progress</h3>
-                    <p id="pending-tasks" class="text-3xl font-bold text-amber-600">0</p>
-                </div>
-                <div class="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
-                    <h3 class="text-lg font-semibold text-emerald-800">Completed Tasks</h3>
-                    <p id="completed-tasks" class="text-3xl font-bold text-emerald-600">0</p>
-                </div>
-            </div>
-
-            <!-- Filter -->
-            <div class="mb-8">
-                <h2 class="text-lg font-semibold text-gray-700 mb-3">Filter by Status:</h2>
-                <div class="flex flex-wrap gap-3">
-                    <button id="all-filter" class="filter-btn bg-indigo-600 text-white px-4 py-2 rounded-full text-sm font-medium transition-all">
-                        All Status
-                    </button>
-                    <button id="pending-filter" class="filter-btn bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-medium transition-all">
-                        Pending
-                    </button>
-                    <button id="progress-filter" class="filter-btn bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-medium transition-all">
-                        In Progress
-                    </button>
-                    <button id="completed-filter" class="filter-btn bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full text-sm font-medium transition-all">
-                        Completed
-                    </button>
-                </div>
-            </div>
-
-            <!-- Company Sections -->
-            <div id="company-sections" class="space-y-8">
-                <!-- Company sections will be populated here -->
-            </div>
         </div>
 
         <!-- Add New Company Form -->
@@ -343,6 +389,8 @@
         let currentAuthMode = ''; // 'login' or 'signup'
         let unsubscribeTasks = () => {}; // Firestore listener unsubscriber
         let unsubscribeCompanyDetails = () => {}; // Firestore listener unsubscriber
+        let currentView = 'list'; // 'list' or 'calendar'
+        let calendarDate = new Date(); // Date for calendar view
 
         // Company colors for visual distinction
         const companyColors = {
@@ -398,6 +446,14 @@
         const newCompanyNameInput = document.getElementById('new-company-name-input');
         const quickNavLinks = document.getElementById('quick-nav-links');
         const companySections = document.getElementById('company-sections');
+        const listViewBtn = document.getElementById('list-view-btn');
+        const calendarViewBtn = document.getElementById('calendar-view-btn');
+        const listViewContent = document.getElementById('list-view-content');
+        const calendarView = document.getElementById('calendar-view');
+        const monthYearHeader = document.getElementById('month-year-header');
+        const calendarGrid = document.getElementById('calendar-grid');
+        const prevMonthBtn = document.getElementById('prev-month-btn');
+        const nextMonthBtn = document.getElementById('next-month-btn');
 
         // --- 4. AUTHENTICATION & APP STARTUP ---
 
@@ -582,12 +638,27 @@
             }
         }
 
-        // --- 6. UI RENDERING ---
+        // --- 6. UI RENDERING & VIEW LOGIC ---
 
         function renderUI() {
-            updateTaskCounts();
-            populateCompanyDropdowns();
-            renderCompanySections();
+            // This is the main render function, it decides which view to show
+            if (currentView === 'list') {
+                listViewContent.classList.remove('hidden');
+                calendarView.classList.add('hidden');
+                listViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500';
+                calendarViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300';
+                
+                updateTaskCounts();
+                populateCompanyDropdowns();
+                renderCompanySections();
+            } else { // 'calendar' view
+                listViewContent.classList.add('hidden');
+                calendarView.classList.remove('hidden');
+                listViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300';
+                calendarViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500';
+                
+                renderCalendar();
+            }
         }
 
         function updateTaskCounts() {
@@ -713,6 +784,57 @@
                     </table>
                 </div>`;
             container.innerHTML = tableHTML;
+        }
+        
+        function renderCalendar() {
+            calendarGrid.innerHTML = '';
+            const month = calendarDate.getMonth();
+            const year = calendarDate.getFullYear();
+
+            monthYearHeader.textContent = `${calendarDate.toLocaleString('default', { month: 'long' })} ${year}`;
+
+            const firstDayOfMonth = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            // Create a map of tasks by deadline for quick lookup
+            const tasksByDate = {};
+            tasks.forEach(task => {
+                if (task.deadline) {
+                    const deadlineDate = task.deadline; // YYYY-MM-DD
+                    if (!tasksByDate[deadlineDate]) {
+                        tasksByDate[deadlineDate] = [];
+                    }
+                    tasksByDate[deadlineDate].push(task);
+                }
+            });
+
+            // Add blank cells for days before the first of the month
+            for (let i = 0; i < firstDayOfMonth; i++) {
+                calendarGrid.insertAdjacentHTML('beforeend', '<div></div>');
+            }
+
+            // Add cells for each day of the month
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dayDate = new Date(year, month, i);
+                const dateString = dayDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                const today = new Date();
+                const isToday = today.toDateString() === dayDate.toDateString();
+                
+                let dayCellHTML = `
+                    <div class="p-2 border rounded-lg h-32 flex flex-col ${isToday ? 'bg-indigo-100' : 'bg-white'}">
+                        <span class="font-bold ${isToday ? 'text-indigo-600' : 'text-gray-700'}">${i}</span>
+                        <div class="mt-1 overflow-y-auto">`;
+                
+                if (tasksByDate[dateString]) {
+                    tasksByDate[dateString].forEach(task => {
+                         const colors = companyColors[task.company] || { bg: "bg-gray-200", text: "text-gray-800" };
+                         dayCellHTML += `<div title="${task.company}: ${task.task}" class="calendar-task ${colors.bg} text-gray-800">${task.task}</div>`;
+                    });
+                }
+
+                dayCellHTML += `</div></div>`;
+                calendarGrid.insertAdjacentHTML('beforeend', dayCellHTML);
+            }
         }
 
         // --- 7. EVENT HANDLERS & LISTENERS ---
@@ -880,6 +1002,27 @@
                 }
                 showConfirmationModal("Authentication Failed", userMessage);
             }
+        });
+        
+        // View switcher listeners
+        listViewBtn.addEventListener('click', () => {
+            currentView = 'list';
+            renderUI();
+        });
+
+        calendarViewBtn.addEventListener('click', () => {
+            currentView = 'calendar';
+            renderUI();
+        });
+
+        prevMonthBtn.addEventListener('click', () => {
+            calendarDate.setMonth(calendarDate.getMonth() - 1);
+            renderCalendar();
+        });
+
+        nextMonthBtn.addEventListener('click', () => {
+            calendarDate.setMonth(calendarDate.getMonth() + 1);
+            renderCalendar();
         });
 
         // --- 8. HELPER FUNCTIONS ---
