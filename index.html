@@ -6,6 +6,7 @@
     <title>Project Task Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK imports -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -15,11 +16,11 @@
         // You can find these details in your Firebase Console under Project settings (⚙️ icon) > Project settings > Your apps.
         const firebaseConfig = {
             apiKey: "AIzaSyBzxnDdBMGdfMfhwylMAkgzIwwRb-jaAaA", // Your provided API Key
-            authDomain: "project-task-manager-5663f.firebaseapp.com",        // e.g., "your-project-id.firebaseapp.com"
+            authDomain: "project-task-manager-5663f.firebaseapp.com",          // e.g., "your-project-id.firebaseapp.com"
             projectId: "project-task-manager-5663f",            // e.g., "your-project-id"
             storageBucket: "project-task-manager-5663f.firebasestorage.app",    // e.g., "your-project-id.appspot.com"
             messagingSenderId: "645859250366", // e.g., "1234567890"
-            appId: "1:645859250366:web:41ac92d85f1db0318b0eef"                   // e.g., "1:1234567890:web:abcdef1234567890abcdef" (This is crucial for Firestore paths)
+            appId: "1:645859250366:web:41ac92d85f1db0318b0eef"                     // e.g., "1:1234567890:web:abcdef1234567890abcdef" (This is crucial for Firestore paths)
             // measurementId: "G-XXXXXXXXXX" // Optional: Uncomment and replace if you use Google Analytics
         };
 
@@ -78,8 +79,8 @@
 
                         // Load data (public company details always, private tasks only if logged in)
                         window.loadFirestoreData();
-                        window.renderCompanySections(); // Moved to be called after loadFirestoreData
-                        window.updateTaskCounts();     // Moved to be called after loadFirestoreData
+                        window.renderCompanySections();
+                        window.updateTaskCounts();
                         window.displayUserId();
                     });
                 }
@@ -101,8 +102,6 @@
                 userIdDisplay.textContent = `User ID: ${window.userId || 'N/A'}`;
             }
         }
-        window.displayUserId = displayUserId; // Expose globally
-
 
         /**
          * Loads tasks and company details from Firestore in real-time using onSnapshot.
@@ -123,6 +122,7 @@
                 window.companyDetails = companyDetails;
                 console.log("Public Company details loaded/updated from Firestore:", companyDetails);
                 window.renderCompanySections(); // Re-render to show updated details
+                window.populateCompanyDropdowns(); // Update dropdowns when company details change
             }, (error) => {
                 console.error("Error listening to public company details collection:", error);
                 if (error.code === 'permission-denied') {
@@ -155,8 +155,6 @@
                 console.log("No user logged in, private tasks cleared.");
             }
         }
-        window.loadFirestoreData = loadFirestoreData; // Expose globally
-
 
         /**
          * Adds a new task to Firestore.
@@ -178,7 +176,7 @@
                 const docRef = await addDoc(collection(window.db, `artifacts/${appId}/users/${window.userId}/tasks`), newTask);
                 console.log("Task added with ID:", docRef.id);
                 // Explicitly trigger a re-render after successful Firestore operation
-                // Note: onSnapshot should also trigger this, but explicit call ensures it runs
+                // Note: onSnapshot should also trigger this, but explicit call ensures immediate feedback.
                 window.renderCompanySections();
                 window.updateTaskCounts();
             } catch (e) {
@@ -186,8 +184,6 @@
                 window.showConfirmationModal("Error", "Failed to add task: " + e.message).then(() => {});
             }
         }
-        window.addTaskToFirestore = addTaskToFirestore; // Expose globally
-
 
         /**
          * Updates an existing task in Firestore.
@@ -218,8 +214,6 @@
                 window.showConfirmationModal("Error", "Failed to update task: " + e.message).then(() => {});
             }
         }
-        window.updateTaskInFirestore = updateTaskInFirestore; // Expose globally
-
 
         /**
          * Deletes a task from Firestore.
@@ -248,8 +242,6 @@
                 window.showConfirmationModal("Error", "Failed to delete task: " + e.message).then(() => {});
             }
         }
-        window.deleteTaskFromFirestore = deleteTaskFromFirestore; // Expose globally
-
 
         /**
          * Saves or updates company details in Firestore.
@@ -279,7 +271,93 @@
                 window.showConfirmationModal("Error", "Failed to save company details: " + e.message).then(() => {});
             }
         }
-        window.saveCompanyDetailsToFirestore = saveCompanyDetailsToFirestore; // Expose globally
+
+        /**
+         * Adds a new company to the public companyDetails collection.
+         * @param {string} companyName - The name of the company to add.
+         */
+        async function addCompany(companyName) {
+            if (!window.isAuthReady || !window.userId || !window.db) {
+                window.showConfirmationModal("Authentication Required", "Please log in to add companies.").then(() => {
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Add Company';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
+                    window.currentAuthMode = 'login';
+                    if (window.authForm) window.authForm.reset();
+                });
+                return;
+            }
+
+            const existingCompany = window.companyDetails.find(d => d.id === companyName);
+            if (existingCompany) {
+                window.showConfirmationModal("Company Exists", `Company '${companyName}' already exists.`).then(() => {});
+                return;
+            }
+
+            try {
+                // Add a new document with basic details to the public companyDetails collection
+                const newCompanyDetails = {
+                    contactPerson: '', phone: '', email: '', address: '', notes: ''
+                };
+                const docRef = doc(window.db, `artifacts/${appId}/public/data/companyDetails`, companyName);
+                await setDoc(docRef, newCompanyDetails);
+                console.log("Company added:", companyName);
+                // No explicit re-render needed here, as onSnapshot for companyDetails will trigger it.
+            } catch (e) {
+                console.error("Error adding company: ", e);
+                window.showConfirmationModal("Error", "Failed to add company: " + e.message).then(() => {});
+            }
+        }
+
+        /**
+         * Deletes a company and all its associated tasks.
+         * @param {string} companyName - The name of the company to delete.
+         */
+        async function deleteCompany(companyName) {
+            if (!window.isAuthReady || !window.userId || !window.db) {
+                window.showConfirmationModal("Authentication Required", "Please log in to delete companies.").then(() => {
+                    if (window.authModal) window.authModal.style.display = 'flex';
+                    if (window.authModalTitle) window.authModalTitle.textContent = 'Login to Delete Company';
+                    if (window.authSubmitBtn) window.authSubmitBtn.textContent = 'Login';
+                    window.currentAuthMode = 'login';
+                    if (window.authForm) window.authForm.reset();
+                });
+                return;
+            }
+
+            const confirmed = await window.showConfirmationModal(
+                "Confirm Deletion",
+                `Are you sure you want to delete company '${companyName}' and ALL its associated tasks? This action cannot be undone.`
+            );
+
+            if (confirmed) {
+                try {
+                    // 1. Delete company details document
+                    await deleteDoc(doc(window.db, `artifacts/${appId}/public/data/companyDetails`, companyName));
+                    console.log(`Company details for '${companyName}' deleted.`);
+
+                    // 2. Query and delete all tasks for this company for the current user
+                    // IMPORTANT: This only deletes tasks for the *currently logged-in user*.
+                    // For a multi-user app where an admin might delete a company's tasks across *all* users,
+                    // you'd need a Cloud Function or more complex admin-level query/deletion logic.
+                    const tasksQuery = query(collection(window.db, `artifacts/${appId}/users/${window.userId}/tasks`), where("company", "==", companyName));
+                    const querySnapshot = await getDocs(tasksQuery);
+
+                    const deletePromises = [];
+                    querySnapshot.forEach((taskDoc) => {
+                        deletePromises.push(deleteDoc(doc(window.db, `artifacts/${appId}/users/${window.userId}/tasks`, taskDoc.id)));
+                    });
+
+                    await Promise.all(deletePromises);
+                    console.log(`All tasks for '${companyName}' by user '${window.userId}' deleted.`);
+
+                    // No explicit re-render needed here, as onSnapshot listeners will trigger it.
+                } catch (e) {
+                    console.error("Error deleting company and its tasks: ", e);
+                    window.showConfirmationModal("Error", "Failed to delete company and its tasks: " + e.message).then(() => {});
+                }
+            }
+        }
 
 
         // Expose Firebase functions and variables to the global scope for the second script
@@ -307,6 +385,17 @@
         window.onSnapshot = onSnapshot;
         window.query = query;
         window.where = where;
+
+        // Expose the custom Firestore CRUD functions
+        window.addTaskToFirestore = addTaskToFirestore;
+        window.updateTaskInFirestore = updateTaskInFirestore;
+        window.deleteTaskFromFirestore = deleteTaskFromFirestore;
+        window.saveCompanyDetailsToFirestore = saveCompanyDetailsToFirestore;
+        window.loadFirestoreData = loadFirestoreData;
+        window.displayUserId = displayUserId;
+        window.addCompany = addCompany; // Expose new function
+        window.deleteCompany = deleteCompany; // Expose new function
+
 
         // Initialize Firebase when this module script loads
         initializeFirebase();
@@ -396,22 +485,15 @@
             </div>
 
 
+            <!-- Quick Navigation -->
             <div class="mb-8">
                 <h2 class="text-lg font-semibold text-gray-700 mb-3">Jump to Company:</h2>
-                <div class="flex flex-wrap gap-2">
-                    <a href="#3bros" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">3bros</a>
-                    <a href="#AH" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">AH</a>
-                    <a href="#Anabina" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">Anabina</a>
-                    <a href="#Anatravel" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">Anatravel</a>
-                    <a href="#MzNZ" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">MzNZ</a>
-                    <a href="#RDHOME" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">RDHOME</a>
-                    <a href="#KFS" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">KFS</a>
-                    <a href="#KPSE" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">KPSE</a>
-                    <a href="#PROJECT X" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">PROJECT X</a>
-                    <a href="#TYARA GROUP" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all">TYARA GROUP</a>
+                <div id="quick-nav-links" class="flex flex-wrap gap-2">
+                    <!-- Quick navigation links will be dynamically populated here -->
                 </div>
             </div>
 
+            <!-- Task Summary -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <div class="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
                     <h3 class="text-lg font-semibold text-indigo-800">Total Tasks</h3>
@@ -427,6 +509,7 @@
                 </div>
             </div>
 
+            <!-- Filter -->
             <div class="mb-8">
                 <h2 class="text-lg font-semibold text-gray-700 mb-3">Filter by Status:</h2>
                 <div class="flex flex-wrap gap-3">
@@ -445,10 +528,25 @@
                 </div>
             </div>
 
+            <!-- Company Sections -->
             <div id="company-sections" class="space-y-8">
-                </div>
+                <!-- Company sections will be populated here -->
+            </div>
         </div>
 
+        <!-- Add New Company Form -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Add New Company</h2>
+            <form id="add-company-form" class="flex flex-col md:flex-row gap-4 items-end">
+                <div class="flex-grow w-full">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                    <input type="text" id="new-company-name-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter new company name" required>
+                </div>
+                <button type="submit" class="px-6 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-all w-full md:w-auto">Add Company</button>
+            </form>
+        </div>
+
+        <!-- Add Task Form -->
         <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
             <h2 class="text-xl font-bold text-gray-800 mb-4" id="task-form-title">Add New Task</h2>
             <form id="add-task-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -456,16 +554,7 @@
                     <label class="block text-sm font-medium text-gray-700 mb-1">Company</label>
                     <select id="company-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="">Select Company</option>
-                        <option value="3bros">3bros</option>
-                        <option value="AH">AH</option>
-                        <option value="Anabina">Anabina</option>
-                        <option value="Anatravel">Anatravel</option>
-                        <option value="MzNZ">MzNZ</option>
-                        <option value="RDHOME">RDHOME</option>
-                        <option value="KFS">KFS</option>
-                        <option value="KPSE">KPSE</option>
-                        <option value="PROJECT X">PROJECT X</option>
-                        <option value="TYARA GROUP">TYARA GROUP</option>
+                        <!-- Options will be dynamically populated -->
                     </select>
                 </div>
                 <div>
@@ -495,6 +584,7 @@
             </form>
         </div>
 
+        <!-- Add Company Details Form -->
         <div class="bg-white rounded-xl shadow-lg p-6">
             <h2 class="text-xl font-bold text-gray-800 mb-4">Add/Edit Company Details</h2>
             <form id="company-details-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -502,16 +592,7 @@
                     <label class="block text-sm font-medium text-gray-700 mb-1">Company</label>
                     <select id="company-details-select" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="">Select Company</option>
-                        <option value="3bros">3bros</option>
-                        <option value="AH">AH</option>
-                        <option value="Anabina">Anabina</option>
-                        <option value="Anatravel">Anatravel</option>
-                        <option value="MzNZ">MzNZ</option>
-                        <option value="RDHOME">RDHOME</option>
-                        <option value="KFS">KFS</option>
-                        <option value="KPSE">KPSE</option>
-                        <option value="PROJECT X">PROJECT X</option>
-                        <option value="TYARA GROUP">TYARA GROUP</option>
+                        <!-- Options will be dynamically populated -->
                     </select>
                 </div>
                 <div>
@@ -541,6 +622,7 @@
         </div>
     </div>
 
+    <!-- Custom Confirmation Modal -->
     <div id="confirmationModal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
@@ -553,6 +635,7 @@
         </div>
     </div>
 
+    <!-- Login/Signup Modal -->
     <div id="auth-modal" class="modal">
         <div class="modal-content">
             <span class="close-button">&times;</span>
@@ -574,12 +657,8 @@
 
     <script type="module">
         // Access global variables and functions exposed by the Firebase import script
-        // Note: 'tasks' and 'companyDetails' are local variables in this module,
-        // they are updated by the onSnapshot listeners.
-        // It's crucial that functions like updateTaskCounts and renderCompanySections
-        // always reference 'window.tasks' and 'window.companyDetails' to get the latest state.
-        let tasks = window.tasks; // This initial assignment might get an empty array. Subsequent calls must use window.tasks.
-        let companyDetails = window.companyDetails; // Same here.
+        let tasks = window.tasks;
+        let companyDetails = window.companyDetails;
 
         // Re-declare Firebase-related variables and functions here to ensure they are accessible
         let db = window.db;
@@ -589,7 +668,7 @@
         let appId = window.appId;
 
         // Firebase functions from the first module
-        const { getFirestore, collection, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } = window;
+        const { getFirestore, collection, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, query, where, getDocs } = window;
 
 
         // Current filter status
@@ -617,7 +696,7 @@
         const contactPersonInput = document.getElementById('contact-person-input');
         const phoneInput = document.getElementById('phone-input');
         const emailInput = document.getElementById('email-input');
-        const addressInput = document.getElementById('address-input');
+        const addressInput = document = document.getElementById('address-input');
         const notesInput = document.getElementById('notes-input');
         const addTaskForm = document.getElementById('add-task-form');
         const companyInput = document.getElementById('company-input');
@@ -635,7 +714,7 @@
         const modalMessage = document.getElementById('modal-message');
         const cancelConfirmBtn = document.getElementById('cancelConfirm');
         const proceedConfirmBtn = document.getElementById('proceedConfirm');
-        const closeButton = confirmationModal.querySelector('.close-button'); // Corrected close button selector for confirmation modal
+        const closeButton = confirmationModal.querySelector('.close-button');
 
         // New Auth DOM elements
         const loginBtn = document.getElementById('login-btn');
@@ -648,7 +727,13 @@
         const authEmailInput = document.getElementById('auth-email');
         const authPasswordInput = document.getElementById('auth-password');
         const authSubmitBtn = document.getElementById('auth-submit-btn');
-        const authModalCloseButton = authModal.querySelector('.close-button'); // Corrected close button selector for auth modal
+        const authModalCloseButton = authModal.querySelector('.close-button');
+
+        // New Company DOM elements
+        const addCompanyForm = document.getElementById('add-company-form');
+        const newCompanyNameInput = document.getElementById('new-company-name-input');
+        const quickNavLinks = document.getElementById('quick-nav-links');
+
 
         // Expose auth buttons to the global scope for the first script to update them
         window.loginBtn = loginBtn;
@@ -695,64 +780,75 @@
 
         // Update task count summary
         function updateTaskCounts() {
-            // === ADDED DEBUG LOGS ===
-            console.log("DEBUG: updateTaskCounts - Current window.tasks:", window.tasks);
-            console.log("DEBUG: updateTaskCounts - window.tasks length:", window.tasks ? window.tasks.length : 0);
-            // ========================
-
-            const totalCount = window.tasks.length;
-            const pendingCount = window.tasks.filter(task => task.status === 'pending' || task.status === 'in-progress').length;
-            const completedCount = window.tasks.filter(task => task.status === 'completed').length;
+            const totalCount = tasks.length;
+            const pendingCount = tasks.filter(task => task.status === 'pending').length;
+            const inProgressCount = tasks.filter(task => task.status === 'in-progress').length;
+            const completedCount = tasks.filter(task => task.status === 'completed').length;
 
             document.getElementById('total-tasks').textContent = totalCount;
-            document.getElementById('pending-tasks').textContent = pendingCount;
+            document.getElementById('pending-tasks').textContent = pendingCount + inProgressCount;
             document.getElementById('completed-tasks').textContent = completedCount;
         }
         window.updateTaskCounts = updateTaskCounts; // Expose globally
 
+        /**
+         * Populates the company dropdowns and quick navigation links.
+         */
+        function populateCompanyDropdowns() {
+            // Clear existing options except the default "Select Company"
+            companyInput.innerHTML = '<option value="">Select Company</option>';
+            companyDetailsSelect.innerHTML = '<option value="">Select Company</option>';
+            quickNavLinks.innerHTML = '';
+
+            // Sort companyDetails alphabetically by company name
+            const sortedCompanies = [...window.companyDetails].sort((a, b) => a.id.localeCompare(b.id));
+
+            sortedCompanies.forEach(companyDetail => {
+                const option1 = document.createElement('option');
+                option1.value = companyDetail.id;
+                option1.textContent = companyDetail.id;
+                companyInput.appendChild(option1);
+
+                const option2 = document.createElement('option');
+                option2.value = companyDetail.id;
+                option2.textContent = companyDetail.id;
+                companyDetailsSelect.appendChild(option2);
+
+                const navLink = document.createElement('a');
+                navLink.href = `#${companyDetail.id.replace(/\s+/g, '-')}`; // Create a valid ID for anchor
+                navLink.className = "px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-200 transition-all";
+                navLink.textContent = companyDetail.id;
+                quickNavLinks.appendChild(navLink);
+            });
+        }
+        window.populateCompanyDropdowns = populateCompanyDropdowns; // Expose globally
+
 
         // Render company sections with their respective tasks
         function renderCompanySections() {
-            // === ADDED DEBUG LOGS ===
-            console.log("DEBUG: renderCompanySections - Current window.tasks:", window.tasks);
-            console.log("DEBUG: renderCompanySections - window.tasks length:", window.tasks ? window.tasks.length : 0);
-            // ========================
-
             const companySections = document.getElementById('company-sections');
             companySections.innerHTML = '';
 
-            // Get unique companies from the tasks and predefined options
-            const predefinedCompanies = Array.from(companyInput.options).filter(opt => opt.value !== '').map(opt => opt.value);
-            const companiesInTasks = [...new Set(window.tasks.map(task => task.company))];
-            const allCompanies = [...new Set([...predefinedCompanies, ...companiesInTasks])].sort(); // Ensure consistent order
+            // Get unique companies from the tasks and all available company details
+            // This ensures all companies (even those without tasks) are displayed.
+            const allCompanyNames = [...new Set([
+                ...window.tasks.map(task => task.company),
+                ...window.companyDetails.map(detail => detail.id)
+            ])].sort();
 
-            allCompanies.forEach(company => {
-                // === ADDED DEBUG LOGS INSIDE LOOP ===
-                console.log(`DEBUG: renderCompanySections - Processing company: '${company}'`);
-                // ===================================
-                
+            // Populate dropdowns and quick nav links
+            window.populateCompanyDropdowns();
+
+            allCompanyNames.forEach(company => {
                 // Filter tasks for this company based on current status filter
-                let companyTasks = window.tasks.filter(task => {
-                    // Optional: For very deep debugging of the filter itself
-                    // console.log(`  Task in filter: '${task.task}', Company: '${task.company}' (Type: ${typeof task.company}) vs Target: '${company}' (Type: ${typeof company})`);
-                    return task.company === company;
-                });
-
-                // === ADDED DEBUG LOGS ===
-                console.log(`DEBUG: renderCompanySections - companyTasks for '${company}' (after initial filter):`, companyTasks);
-                console.log(`DEBUG: renderCompanySections - companyTasks.length for '${company}':`, companyTasks.length);
-                // ========================
+                let companyTasks = window.tasks.filter(task => task.company === company);
 
                 if (currentStatus !== 'all') {
                     companyTasks = companyTasks.filter(task => task.status === currentStatus);
-                    // === ADDED DEBUG LOG ===
-                    console.log(`DEBUG: renderCompanySections - companyTasks for '${company}' (after status filter):`, companyTasks);
-                    // ========================
                 }
 
                 // If no tasks are found for this company under the current filter AND it's not the 'all' filter, skip rendering the section.
                 if (companyTasks.length === 0 && currentStatus !== 'all') {
-                    console.log("DEBUG: Skipping company section due to no tasks matching filter and filter is not 'all':", company); // ADDED LOG
                     return;
                 }
 
@@ -760,6 +856,7 @@
                 const colors = companyColors[company] || { bg: "bg-gray-50", border: "border-gray-200", header: "from-gray-500 to-gray-700" };
 
                 // Get company details
+                // Company details are stored with company name as ID in public collection
                 const details = window.companyDetails.find(d => d.id === company) || {
                     id: company,
                     contactPerson: '',
@@ -772,7 +869,7 @@
                 // Create company section
                 const section = document.createElement('div');
                 section.className = `company-section ${colors.bg} rounded-xl shadow-md border ${colors.border} overflow-hidden company-card`;
-                section.id = company;
+                section.id = company.replace(/\s+/g, '-'); // Ensure ID is valid for anchor links
 
                 // Company header
                 const header = document.createElement('div');
@@ -780,9 +877,14 @@
                 header.innerHTML = `
                     <div class="flex justify-between items-center">
                         <h2 class="text-xl font-bold">${company}</h2>
-                        <span class="bg-white text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
-                            ${companyTasks.length} Task${companyTasks.length !== 1 ? 's' : ''}
-                        </span>
+                        <div class="flex items-center gap-2">
+                            <span class="bg-white text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
+                                ${companyTasks.length} Task${companyTasks.length !== 1 ? 's' : ''}
+                            </span>
+                            <button class="delete-company-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full text-sm font-medium" data-company="${company}">
+                                Delete Company
+                            </button>
+                        </div>
                     </div>
                 `;
                 section.appendChild(header);
@@ -802,7 +904,6 @@
                 tasksContent.id = `tasks-${company}`;
 
                 if (companyTasks.length > 0) {
-                    console.log(`DEBUG: Successfully filtered tasks for ${company}. Rendering table.`); // ADDED LOG
                     tasksContent.innerHTML = `
                         <div class="overflow-x-auto p-4">
                             <table class="min-w-full text-sm text-left rounded-lg overflow-hidden">
@@ -816,12 +917,12 @@
                                     </tr>
                                 </thead>
                                 <tbody id="task-table-${company.replace(/\s+/g, '-')}" class="divide-y divide-gray-200">
-                                    </tbody>
+                                    <!-- Tasks will be populated here -->
+                                </tbody>
                             </table>
                         </div>
                     `;
                 } else {
-                    console.log(`DEBUG: No tasks found for ${company} after filters. Rendering empty message.`); // ADDED LOG
                     tasksContent.innerHTML = `
                         <div class="text-center py-8">
                             <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -949,6 +1050,13 @@
             document.querySelectorAll('.edit-details-btn').forEach(btn => {
                 btn.addEventListener('click', handleEditDetails);
             });
+
+            document.querySelectorAll('.delete-company-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const companyToDelete = e.target.dataset.company;
+                    window.deleteCompany(companyToDelete);
+                });
+            });
         }
         window.addEventListenersToDynamicElements = addEventListenersToDynamicElements; // Expose globally
 
@@ -1059,7 +1167,7 @@
             }
 
             const taskId = e.target.dataset.id; // This is the Firestore document ID
-            const taskToEdit = window.tasks.find(task => task.id === taskId); // Use window.tasks here
+            const taskToEdit = tasks.find(task => task.id === taskId);
 
             if (taskToEdit) {
                 companyInput.value = taskToEdit.company;
@@ -1117,12 +1225,12 @@
             }
 
             const taskId = e.target.dataset.id; // This is the Firestore document ID
-            const taskIndex = window.tasks.findIndex(task => task.id === taskId); // Use window.tasks here
+            const taskIndex = tasks.findIndex(task => task.id === taskId);
 
             if (taskIndex > -1) {
                 let newStatus;
                 // Toggle between completed and pending/in-progress
-                if (window.tasks[taskIndex].status === 'completed') {
+                if (tasks[taskIndex].status === 'completed') {
                     newStatus = 'pending'; // Or whatever default non-completed status makes sense
                 } else {
                     newStatus = 'completed';
@@ -1195,13 +1303,12 @@
         });
 
         // --- Auth Modal Logic ---
-        // currentAuthMode is implicitly global because it's attached to window.currentAuthMode
         window.currentAuthMode = '';
 
         loginBtn.addEventListener('click', () => {
             authModalTitle.textContent = 'Login';
             authSubmitBtn.textContent = 'Login';
-            window.currentAuthMode = 'login'; // Set globally
+            window.currentAuthMode = 'login';
             authForm.reset();
             authModal.style.display = 'flex';
         });
@@ -1209,7 +1316,7 @@
         signupBtn.addEventListener('click', () => {
             authModalTitle.textContent = 'Sign Up';
             authSubmitBtn.textContent = 'Sign Up';
-            window.currentAuthMode = 'signup'; // Set globally
+            window.currentAuthMode = 'signup';
             authForm.reset();
             authModal.style.display = 'flex';
         });
@@ -1218,7 +1325,6 @@
             const confirmed = await showConfirmationModal("Confirm Logout", "Are you sure you want to log out?");
             if (confirmed) {
                 try {
-                    // Use getAuth() to retrieve the Auth instance, which is now guaranteed to be available after initializeFirebase
                     await signOut(getAuth());
                     console.log("User signed out.");
                 } catch (error) {
@@ -1234,7 +1340,6 @@
             const password = authPasswordInput.value;
 
             try {
-                // Use getAuth() to retrieve the Auth instance
                 if (window.currentAuthMode === 'login') {
                     await signInWithEmailAndPassword(getAuth(), email, password);
                     console.log("User logged in successfully!");
@@ -1242,7 +1347,7 @@
                     await createUserWithEmailAndPassword(getAuth(), email, password);
                     console.log("User signed up successfully!");
                 }
-                authModal.style.display = 'none'; // Close modal on success
+                authModal.style.display = 'none';
             } catch (error) {
                 console.error("Authentication error:", error);
                 let errorMessage = "An unknown error occurred.";
@@ -1279,16 +1384,27 @@
             }
         });
 
+        // Handle Add Company form submission
+        addCompanyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newCompanyName = newCompanyNameInput.value.trim();
+            if (newCompanyName) {
+                await window.addCompany(newCompanyName);
+                newCompanyNameInput.value = ''; // Clear input
+            } else {
+                await showConfirmationModal("Missing Information", "Please enter a company name.");
+            }
+        });
+
 
         // Initialize the app on window load
         window.onload = function () {
             // Re-assign local variables to window properties after window.onload fires
-            // This is primarily for clarity; these are updated by initializeFirebase and onAuthStateChanged
             db = window.db;
             userId = window.userId;
             userEmail = window.userEmail;
             isAuthReady = window.isAuthReady;
-            tasks = window.tasks; // This will get the latest from window.tasks, but onSnapshot continues to update window.tasks directly
+            tasks = window.tasks;
             companyDetails = window.companyDetails;
 
 
@@ -1296,7 +1412,6 @@
             companyDetailsSelect.addEventListener('change', function() {
                 const selectedCompany = this.value;
                 if (selectedCompany) {
-                    // Access the globally updated companyDetails array
                     const details = window.companyDetails.find(d => d.id === selectedCompany);
                     if (details) {
                         contactPersonInput.value = details.contactPerson || '';
@@ -1305,7 +1420,6 @@
                         addressInput.value = details.address || '';
                         notesInput.value = details.notes || '';
                     } else {
-                        // Clear form if no details exist for the selected company
                         contactPersonInput.value = '';
                         phoneInput.value = '';
                         emailInput.value = '';
@@ -1313,7 +1427,6 @@
                         notesInput.value = '';
                     }
                 } else {
-                    // Clear form if no company is selected
                     contactPersonInput.value = '';
                     phoneInput.value = '';
                     emailInput.value = '';
@@ -1322,15 +1435,7 @@
                 }
             });
 
-            // Set initial deadline input to today's date for better UX
-            const today = new Date();
-            const yyyy = today.getFullYear();
-            const mm = String(today.getMonth() + 1).padStart(2, '0'); // January is 0!
-            const dd = String(today.getDate()).padStart(2, '0');
-            deadlineInput.value = `${yyyy}-${mm}-${dd}`;
-
-            // Initial display of user ID. This will be updated by onAuthStateChanged later.
-            // window.displayUserId(); // This is already called by onAuthStateChanged, no need to duplicate here
+            window.displayUserId();
         }
     </script>
 </body>
