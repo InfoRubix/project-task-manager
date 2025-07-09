@@ -84,6 +84,13 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .calendar-day {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .calendar-day:hover {
+            background-color: #f3f4f6;
+        }
     </style>
 </head>
 <body>
@@ -102,11 +109,14 @@
             <!-- View Switcher -->
             <div class="mb-8 border-b border-gray-200">
                 <nav class="-mb-px flex space-x-8" aria-label="Tabs">
-                    <button id="list-view-btn" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500">
+                    <button id="list-view-btn" class="view-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500">
                         Company View
                     </button>
-                    <button id="calendar-view-btn" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                    <button id="calendar-view-btn" class="view-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
                         Calendar View
+                    </button>
+                    <button id="notes-view-btn" class="view-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                        Notes
                     </button>
                 </nav>
             </div>
@@ -181,6 +191,13 @@
                 <div id="calendar-grid" class="grid grid-cols-7 gap-2">
                     <!-- Calendar days will be populated here -->
                 </div>
+            </div>
+
+            <!-- Notes View -->
+            <div id="notes-view" class="hidden">
+                 <h2 class="text-xl font-bold text-gray-800 mb-4">My Notes</h2>
+                 <p class="text-sm text-gray-500 mb-4">A space for your personal reminders and thoughts. Notes are saved automatically.</p>
+                 <textarea id="notes-textarea" class="w-full h-96 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Start typing your notes here..."></textarea>
             </div>
 
         </div>
@@ -331,6 +348,17 @@
         </div>
     </div>
 
+    <!-- Day Detail Modal -->
+    <div id="day-detail-modal" class="modal">
+        <div class="modal-content max-w-lg">
+            <span class="close-button">&times;</span>
+            <h3 class="text-xl font-bold mb-4" id="day-modal-title">Tasks for Day</h3>
+            <div id="day-modal-tasks" class="space-y-3">
+                <!-- Tasks will be populated here -->
+            </div>
+        </div>
+    </div>
+
     <!-- Firebase SDK and App Logic -->
     <script type="module">
         // Import Firebase modules
@@ -383,13 +411,15 @@
 
         let tasks = [];
         let companyDetails = [];
+        let userNotes = "";
         let currentUserId = null;
         let currentStatus = 'all'; // for filtering
         let editingTaskId = null; // for editing tasks
         let currentAuthMode = ''; // 'login' or 'signup'
         let unsubscribeTasks = () => {}; // Firestore listener unsubscriber
         let unsubscribeCompanyDetails = () => {}; // Firestore listener unsubscriber
-        let currentView = 'list'; // 'list' or 'calendar'
+        let unsubscribeNotes = () => {}; // Firestore listener for notes
+        let currentView = 'list'; // 'list', 'calendar', or 'notes'
         let calendarDate = new Date(); // Date for calendar view
 
         // Company colors for visual distinction
@@ -446,14 +476,19 @@
         const newCompanyNameInput = document.getElementById('new-company-name-input');
         const quickNavLinks = document.getElementById('quick-nav-links');
         const companySections = document.getElementById('company-sections');
-        const listViewBtn = document.getElementById('list-view-btn');
-        const calendarViewBtn = document.getElementById('calendar-view-btn');
+        const viewTabs = document.querySelectorAll('.view-tab');
         const listViewContent = document.getElementById('list-view-content');
         const calendarView = document.getElementById('calendar-view');
+        const notesView = document.getElementById('notes-view');
         const monthYearHeader = document.getElementById('month-year-header');
         const calendarGrid = document.getElementById('calendar-grid');
         const prevMonthBtn = document.getElementById('prev-month-btn');
         const nextMonthBtn = document.getElementById('next-month-btn');
+        const notesTextarea = document.getElementById('notes-textarea');
+        const dayDetailModal = document.getElementById('day-detail-modal');
+        const dayModalTitle = document.getElementById('day-modal-title');
+        const dayModalTasks = document.getElementById('day-modal-tasks');
+        const dayModalCloseBtn = dayDetailModal.querySelector('.close-button');
 
         // --- 4. AUTHENTICATION & APP STARTUP ---
 
@@ -544,14 +579,32 @@
                     showConfirmationModal("Permission Denied", "Cannot access your private tasks. Check your security rules for the user tasks path.");
                 }
             });
+            
+            // Listener for user notes
+            const notesDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/notes/main`);
+            unsubscribeNotes = onSnapshot(notesDocRef, (doc) => {
+                if (doc.exists()) {
+                    userNotes = doc.data().content;
+                } else {
+                    userNotes = "";
+                }
+                // Only render if notes view is active to avoid unnecessary re-renders
+                if (currentView === 'notes') {
+                    renderUI();
+                }
+            }, (error) => {
+                console.error("Error listening to notes:", error);
+            });
         }
 
         function detachFirestoreListeners() {
             console.log("Detaching Firestore listeners.");
             unsubscribeCompanyDetails();
             unsubscribeTasks();
+            unsubscribeNotes();
             tasks = [];
             companyDetails = [];
+            userNotes = "";
         }
 
 
@@ -638,26 +691,38 @@
             }
         }
 
+        async function saveNotesToFirestore(notesContent) {
+            if (!currentUserId) return;
+            try {
+                const notesDocRef = doc(db, `artifacts/${appId}/users/${currentUserId}/notes/main`);
+                await setDoc(notesDocRef, { content: notesContent });
+            } catch (e) {
+                console.error("Error saving notes: ", e);
+                showConfirmationModal("Error", "Failed to save notes: " + e.message);
+            }
+        }
+
         // --- 6. UI RENDERING & VIEW LOGIC ---
 
         function renderUI() {
             // This is the main render function, it decides which view to show
+            [listViewContent, calendarView, notesView].forEach(v => v.classList.add('hidden'));
+            viewTabs.forEach(t => t.className = 'view-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300');
+
             if (currentView === 'list') {
                 listViewContent.classList.remove('hidden');
-                calendarView.classList.add('hidden');
-                listViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500';
-                calendarViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300';
-                
+                document.getElementById('list-view-btn').className = 'view-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500';
                 updateTaskCounts();
                 populateCompanyDropdowns();
                 renderCompanySections();
-            } else { // 'calendar' view
-                listViewContent.classList.add('hidden');
+            } else if (currentView === 'calendar') {
                 calendarView.classList.remove('hidden');
-                listViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300';
-                calendarViewBtn.className = 'whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500';
-                
+                document.getElementById('calendar-view-btn').className = 'view-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500';
                 renderCalendar();
+            } else { // 'notes' view
+                notesView.classList.remove('hidden');
+                document.getElementById('notes-view-btn').className = 'view-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-indigo-600 border-indigo-500';
+                renderNotesView();
             }
         }
 
@@ -796,45 +861,51 @@
             const firstDayOfMonth = new Date(year, month, 1).getDay();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-            // Create a map of tasks by deadline for quick lookup
             const tasksByDate = {};
             tasks.forEach(task => {
                 if (task.deadline) {
-                    const deadlineDate = task.deadline; // YYYY-MM-DD
-                    if (!tasksByDate[deadlineDate]) {
-                        tasksByDate[deadlineDate] = [];
-                    }
-                    tasksByDate[deadlineDate].push(task);
+                    if (!tasksByDate[task.deadline]) tasksByDate[task.deadline] = [];
+                    tasksByDate[task.deadline].push(task);
                 }
             });
 
-            // Add blank cells for days before the first of the month
             for (let i = 0; i < firstDayOfMonth; i++) {
                 calendarGrid.insertAdjacentHTML('beforeend', '<div></div>');
             }
 
-            // Add cells for each day of the month
             for (let i = 1; i <= daysInMonth; i++) {
                 const dayDate = new Date(year, month, i);
-                const dateString = dayDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                const dateString = dayDate.toISOString().split('T')[0];
                 const today = new Date();
                 const isToday = today.toDateString() === dayDate.toDateString();
+                const tasksForDay = tasksByDate[dateString] || [];
                 
-                let dayCellHTML = `
-                    <div class="p-2 border rounded-lg h-32 flex flex-col ${isToday ? 'bg-indigo-100' : 'bg-white'}">
-                        <span class="font-bold ${isToday ? 'text-indigo-600' : 'text-gray-700'}">${i}</span>
-                        <div class="mt-1 overflow-y-auto">`;
-                
-                if (tasksByDate[dateString]) {
-                    tasksByDate[dateString].forEach(task => {
-                         const colors = companyColors[task.company] || { bg: "bg-gray-200", text: "text-gray-800" };
-                         dayCellHTML += `<div title="${task.company}: ${task.task}" class="calendar-task ${colors.bg} text-gray-800">${task.task}</div>`;
-                    });
+                let dayCell = document.createElement('div');
+                dayCell.className = `p-2 border rounded-lg h-32 flex flex-col ${isToday ? 'bg-indigo-100' : 'bg-white'} ${tasksForDay.length > 0 ? 'calendar-day' : ''}`;
+                if (tasksForDay.length > 0) {
+                    dayCell.dataset.date = dateString;
                 }
 
-                dayCellHTML += `</div></div>`;
-                calendarGrid.insertAdjacentHTML('beforeend', dayCellHTML);
+                let dayCellHTML = `<span class="font-bold ${isToday ? 'text-indigo-600' : 'text-gray-700'}">${i}</span>
+                                   <div class="mt-1 overflow-y-auto">`;
+                
+                tasksForDay.forEach(task => {
+                    const colors = companyColors[task.company] || { bg: "bg-gray-200" };
+                    dayCellHTML += `<div title="${task.company}: ${task.task}" class="calendar-task ${colors.bg} text-gray-800">${task.task}</div>`;
+                });
+
+                dayCellHTML += `</div>`;
+                dayCell.innerHTML = dayCellHTML;
+                calendarGrid.appendChild(dayCell);
             }
+            // Add click listeners after rendering
+            document.querySelectorAll('.calendar-day').forEach(day => {
+                day.addEventListener('click', handleDayClick);
+            });
+        }
+        
+        function renderNotesView() {
+            notesTextarea.value = userNotes;
         }
 
         // --- 7. EVENT HANDLERS & LISTENERS ---
@@ -900,6 +971,33 @@
             companyDetailsSelect.value = company;
             companyDetailsSelect.dispatchEvent(new Event('change'));
             companyDetailsForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        
+        function handleDayClick(e) {
+            const dateString = e.currentTarget.dataset.date;
+            if (!dateString) return;
+
+            const tasksForDay = tasks.filter(task => task.deadline === dateString);
+            const date = new Date(dateString + 'T00:00:00'); // Adjust for timezone
+            dayModalTitle.textContent = `Tasks for ${date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+            
+            dayModalTasks.innerHTML = '';
+            if (tasksForDay.length > 0) {
+                tasksForDay.forEach(task => {
+                    const colors = companyColors[task.company] || { bg: "bg-gray-200" };
+                    dayModalTasks.innerHTML += `
+                        <div class="p-3 rounded-lg ${colors.bg}">
+                            <p class="font-bold text-gray-800">${task.task}</p>
+                            <p class="text-sm text-gray-600">Company: ${task.company}</p>
+                            <p class="text-sm text-gray-600">PIC: ${task.pic || '-'}</p>
+                        </div>
+                    `;
+                });
+            } else {
+                dayModalTasks.innerHTML = '<p class="text-gray-500">No tasks for this day.</p>';
+            }
+
+            dayDetailModal.style.display = 'flex';
         }
 
         // Main form submissions
@@ -1005,14 +1103,11 @@
         });
         
         // View switcher listeners
-        listViewBtn.addEventListener('click', () => {
-            currentView = 'list';
-            renderUI();
-        });
-
-        calendarViewBtn.addEventListener('click', () => {
-            currentView = 'calendar';
-            renderUI();
+        viewTabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                currentView = e.currentTarget.id.replace('-view-btn', '');
+                renderUI();
+            });
         });
 
         prevMonthBtn.addEventListener('click', () => {
@@ -1023,6 +1118,14 @@
         nextMonthBtn.addEventListener('click', () => {
             calendarDate.setMonth(calendarDate.getMonth() + 1);
             renderCalendar();
+        });
+        
+        let notesSaveTimeout;
+        notesTextarea.addEventListener('keyup', () => {
+            clearTimeout(notesSaveTimeout);
+            notesSaveTimeout = setTimeout(() => {
+                saveNotesToFirestore(notesTextarea.value);
+            }, 500); // Debounce saving by 500ms
         });
 
         // --- 8. HELPER FUNCTIONS ---
@@ -1048,6 +1151,8 @@
             authModal.style.display = 'none';
         }
         authModalCloseButton.addEventListener('click', closeAuthModal);
+        dayModalCloseBtn.addEventListener('click', () => dayDetailModal.style.display = 'none');
+
 
         function showLoginPrompt(action) {
             showConfirmationModal("Authentication Required", `Please log in to ${action}.`).then(confirmed => {
@@ -1099,6 +1204,7 @@
         window.addEventListener('click', (event) => {
             if (event.target == authModal) closeAuthModal();
             if (event.target == confirmationModal) confirmationModal.style.display = 'none';
+            if (event.target == dayDetailModal) dayDetailModal.style.display = 'none';
         });
 
         // Kick off the application
