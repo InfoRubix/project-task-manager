@@ -104,9 +104,9 @@
 <body>
     <div id="app-container" class="flex h-screen bg-gray-200">
         <!-- Sidebar -->
-        <aside id="sidebar" class="w-64 bg-gray-800 text-gray-200 p-4 flex-shrink-0 transition-transform -translate-x-full md:translate-x-0 md:block">
+        <aside id="sidebar" class="w-64 bg-gray-800 text-gray-200 p-4 flex-shrink-0 transition-transform -translate-x-full md:translate-x-0 md:block flex flex-col">
             <h1 class="text-2xl font-bold text-white mb-8">Task Manager</h1>
-            <nav class="space-y-4">
+            <nav class="space-y-4 flex-grow overflow-y-auto">
                 <div>
                     <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Views</h2>
                     <a href="#" class="sidebar-link flex items-center p-2 rounded-lg hover:bg-gray-700" data-view="list">
@@ -136,6 +136,12 @@
                         <svg class="w-5 h-5 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z"></path></svg>
                         Edit Company Details
                     </a>
+                </div>
+                 <div>
+                    <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-8 mb-2">Companies</h2>
+                    <div id="sidebar-company-list" class="space-y-1">
+                        <!-- Company links will be populated here -->
+                    </div>
                 </div>
             </nav>
         </aside>
@@ -473,7 +479,6 @@
         const authModalCloseButton = authModal.querySelector('.close-button');
         const addCompanyForm = document.getElementById('add-company-form');
         const newCompanyNameInput = document.getElementById('new-company-name-input');
-        const quickNavLinks = document.getElementById('quick-nav-links');
         const companySections = document.getElementById('company-sections');
         const sidebarLinks = document.querySelectorAll('.sidebar-link');
         const contentBlocks = document.querySelectorAll('.content-view');
@@ -488,6 +493,7 @@
         const dayModalCloseBtn = dayDetailModal.querySelector('.close-button');
         const sidebar = document.getElementById('sidebar');
         const hamburgerBtn = document.getElementById('hamburger-btn');
+        const sidebarCompanyList = document.getElementById('sidebar-company-list');
 
         // --- 4. AUTHENTICATION & APP STARTUP ---
 
@@ -711,6 +717,8 @@
 
             const activeBlock = document.getElementById(`${activeContent}-view`);
             if (activeBlock) activeBlock.classList.remove('hidden');
+            
+            renderSidebarCompanyList();
 
             // Specific render functions for views that need them
             if (activeContent === 'list') {
@@ -752,6 +760,40 @@
 
             companyInput.value = currentTaskCompany;
             companyDetailsSelect.value = currentDetailsCompany;
+        }
+
+        function renderSidebarCompanyList() {
+            sidebarCompanyList.innerHTML = '';
+            if (companyDetails.length === 0) {
+                sidebarCompanyList.innerHTML = '<p class="text-xs text-gray-500 p-2">No companies added yet.</p>';
+                return;
+            }
+
+            const sortedCompanies = [...companyDetails].sort((a, b) => a.id.localeCompare(b.id));
+
+            sortedCompanies.forEach(company => {
+                const companyId = company.id.replace(/\s+/g, '-');
+                const link = document.createElement('a');
+                link.href = `#${companyId}`;
+                link.className = 'sidebar-link flex items-center p-2 rounded-lg hover:bg-gray-700 text-sm pl-4';
+                link.dataset.companyId = companyId;
+                link.textContent = company.id;
+                
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    activeContent = 'list';
+                    renderUI();
+                    
+                    setTimeout(() => {
+                        const companySection = document.getElementById(companyId);
+                        if (companySection) {
+                            companySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }, 0);
+                });
+
+                sidebarCompanyList.appendChild(link);
+            });
         }
 
         function renderCompanySections() {
