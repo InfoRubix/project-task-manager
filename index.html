@@ -102,7 +102,31 @@
     </style>
 </head>
 <body>
-    <div id="app-container" class="flex h-screen bg-gray-200">
+    <!-- Login View -->
+    <div id="login-view" class="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4">
+        <div class="w-full max-w-md bg-white rounded-xl shadow-lg p-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Task Manager</h1>
+            <p class="text-gray-600 mb-6 text-center">Please sign in to continue</p>
+            <div id="auth-container">
+                 <form id="auth-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="auth-email" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Password</label>
+                        <input type="password" id="auth-password" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2 pt-2">
+                        <button type="submit" id="login-submit-btn" class="flex-1 px-6 py-2 bg-indigo-600 text-white rounded-lg w-full hover:bg-indigo-700 transition-all">Login</button>
+                        <button type="submit" id="signup-submit-btn" class="flex-1 px-6 py-2 bg-green-600 text-white rounded-lg w-full hover:bg-green-700 transition-all">Sign Up</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container" class="hidden h-screen bg-gray-200">
         <!-- Sidebar -->
         <aside id="sidebar" class="w-64 bg-gray-800 text-gray-200 p-4 flex-shrink-0 transition-transform -translate-x-full md:translate-x-0 md:block flex flex-col">
             <h1 class="text-2xl font-bold text-white mb-8">Task Manager</h1>
@@ -155,8 +179,6 @@
                 <div class="text-lg font-semibold text-gray-700">Project Task Manager</div>
                 <div id="user-info" class="flex items-center gap-4">
                     <span id="user-email-display" class="text-gray-700 self-center font-medium hidden sm:block"></span>
-                    <button id="login-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all">Login</button>
-                    <button id="signup-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all">Sign Up</button>
                     <button id="logout-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all hidden">Logout</button>
                 </div>
             </header>
@@ -334,25 +356,6 @@
         </div>
     </div>
 
-    <!-- Login/Signup Modal -->
-    <div id="auth-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <h3 class="text-xl font-bold mb-4" id="auth-modal-title"></h3>
-            <form id="auth-form" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Email</label>
-                    <input type="email" id="auth-email" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Password</label>
-                    <input type="password" id="auth-password" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
-                </div>
-                <button type="submit" id="auth-submit-btn" class="px-6 py-2 bg-indigo-600 text-white rounded-lg w-full hover:bg-indigo-700 transition-all">Submit</button>
-            </form>
-        </div>
-    </div>
-
     <!-- Day Detail Modal -->
     <div id="day-detail-modal" class="modal">
         <div class="modal-content max-w-lg">
@@ -368,10 +371,11 @@
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, getDocs, addDoc, setDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- 1. CONFIGURATION AND INITIALIZATION ---
+        const loginView = document.getElementById('login-view');
         const appContainer = document.getElementById('app-container');
         const configErrorContainer = document.getElementById('config-error');
         const authProviderErrorContainer = document.getElementById('auth-provider-error');
@@ -391,7 +395,8 @@
         // Check for a valid API key. If it's a known placeholder, show an error and stop.
         if (firebaseConfig.apiKey === "YOUR_API_KEY") {
             console.error("Firebase configuration is missing or invalid. Using placeholder data.");
-            appContainer.classList.add('hidden');
+            appContainer.style.display = 'none';
+            loginView.style.display = 'none';
             configErrorContainer.classList.remove('hidden');
             // Stop script execution if config is invalid
             throw new Error("Firebase configuration not provided.");
@@ -407,7 +412,8 @@
             auth = getAuth(app);
         } catch (error) {
             console.error("Error initializing Firebase:", error);
-            appContainer.classList.add('hidden');
+            appContainer.style.display = 'none';
+            loginView.style.display = 'none';
             configErrorContainer.classList.remove('hidden');
             configErrorContainer.querySelector('p').textContent = `Error initializing Firebase: ${error.message}`;
         }
@@ -420,7 +426,6 @@
         let currentUserId = null;
         let currentStatus = 'all'; // for filtering
         let editingTaskId = null; // for editing tasks
-        let currentAuthMode = ''; // 'login' or 'signup'
         let unsubscribeTasks = () => {}; // Firestore listener unsubscriber
         let unsubscribeCompanyDetails = () => {}; // Firestore listener unsubscriber
         let unsubscribeNotes = () => {}; // Firestore listener for notes
@@ -443,7 +448,6 @@
 
         // --- 3. DOM ELEMENT REFERENCES ---
 
-        const userIdDisplay = document.getElementById('user-id-display');
         const companyDetailsSelect = document.getElementById('company-details-select');
         const contactPersonInput = document.getElementById('contact-person-input');
         const phoneInput = document.getElementById('phone-input');
@@ -466,17 +470,13 @@
         const cancelConfirmBtn = document.getElementById('cancelConfirm');
         const proceedConfirmBtn = document.getElementById('proceedConfirm');
         const closeButton = confirmationModal.querySelector('.close-button');
-        const loginBtn = document.getElementById('login-btn');
-        const signupBtn = document.getElementById('signup-btn');
         const logoutBtn = document.getElementById('logout-btn');
         const userEmailDisplay = document.getElementById('user-email-display');
-        const authModal = document.getElementById('auth-modal');
-        const authModalTitle = document.getElementById('auth-modal-title');
         const authForm = document.getElementById('auth-form');
         const authEmailInput = document.getElementById('auth-email');
         const authPasswordInput = document.getElementById('auth-password');
-        const authSubmitBtn = document.getElementById('auth-submit-btn');
-        const authModalCloseButton = authModal.querySelector('.close-button');
+        const loginSubmitBtn = document.getElementById('login-submit-btn');
+        const signupSubmitBtn = document.getElementById('signup-submit-btn');
         const addCompanyForm = document.getElementById('add-company-form');
         const newCompanyNameInput = document.getElementById('new-company-name-input');
         const companySections = document.getElementById('company-sections');
@@ -497,53 +497,37 @@
 
         // --- 4. AUTHENTICATION & APP STARTUP ---
 
-        async function initializeAppAndAuth() {
+        function initializeAppAndAuth() {
             onAuthStateChanged(auth, (user) => {
                 if (user) {
                     // User is signed in.
                     currentUserId = user.uid;
                     const userEmail = user.isAnonymous ? 'Guest User (Anonymous)' : user.email || 'Authenticated User';
                     console.log("Auth state changed: Signed in as", userEmail, `(UID: ${currentUserId})`);
+                    
+                    loginView.style.display = 'none';
+                    appContainer.style.display = 'flex';
+                    
                     updateUIAfterAuthChange(true, userEmail);
                     attachFirestoreListeners();
                 } else {
                     // User is signed out.
                     currentUserId = null;
                     console.log("Auth state changed: Signed out.");
+                    
+                    loginView.style.display = 'flex';
+                    appContainer.style.display = 'none';
+
                     updateUIAfterAuthChange(false, '');
                     detachFirestoreListeners();
                     renderUI(); // Render the logged-out state
                 }
             });
-
-            // Trigger initial sign-in if no user is currently detected.
-            if (!auth.currentUser) {
-                try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        console.log("Attempting sign-in with custom token...");
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        console.log("Attempting anonymous sign-in...");
-                        await signInAnonymously(auth);
-                    }
-                } catch (error) {
-                    console.error("Error during initial automatic sign-in:", error);
-                    if (error.code === 'auth/operation-not-allowed') {
-                        appContainer.classList.add('hidden');
-                        document.getElementById('error-project-id').textContent = firebaseConfig.projectId;
-                        authProviderErrorContainer.classList.remove('hidden');
-                    } else {
-                        showConfirmationModal("Authentication Error", "Could not sign you in automatically. Please try logging in manually. Error: " + error.message);
-                    }
-                }
-            }
         }
 
         function updateUIAfterAuthChange(isLoggedIn, email) {
             userEmailDisplay.textContent = email;
             logoutBtn.classList.toggle('hidden', !isLoggedIn);
-            loginBtn.classList.toggle('hidden', isLoggedIn);
-            signupBtn.classList.toggle('hidden', isLoggedIn);
         }
 
         // --- 5. FIRESTORE DATA MANAGEMENT ---
@@ -558,16 +542,16 @@
             // Detach any existing listeners before attaching new ones
             detachFirestoreListeners();
 
-            // Listener for public company details
-            const publicCompanyDetailsColRef = collection(db, `artifacts/${appId}/public/data/companyDetails`);
-            unsubscribeCompanyDetails = onSnapshot(publicCompanyDetailsColRef, (snapshot) => {
+            // Listener for PRIVATE company details
+            const companyDetailsColRef = collection(db, `artifacts/${appId}/users/${currentUserId}/companyDetails`);
+            unsubscribeCompanyDetails = onSnapshot(companyDetailsColRef, (snapshot) => {
                 companyDetails = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                console.log("Public Company details loaded/updated:", companyDetails);
+                console.log("Private Company details loaded/updated:", companyDetails);
                 renderUI();
             }, (error) => {
-                console.error("Error listening to public company details:", error);
+                console.error("Error listening to private company details:", error);
                 if (error.code === 'permission-denied') {
-                    showConfirmationModal("Permission Denied", "Cannot access public company details. Your security rules may be preventing access.");
+                    showConfirmationModal("Permission Denied", "Cannot access your private company details. Check your security rules.");
                 }
             });
 
@@ -649,7 +633,7 @@
         async function saveCompanyDetailsToFirestore(companyName, details) {
             if (!currentUserId) return showLoginPrompt("save company details");
             try {
-                const docRef = doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName);
+                const docRef = doc(db, `artifacts/${appId}/users/${currentUserId}/companyDetails`, companyName);
                 await setDoc(docRef, details, { merge: true });
                 console.log("Company details saved successfully for:", companyName);
             } catch (e) {
@@ -665,7 +649,7 @@
             }
             try {
                 const newCompanyDetails = { contactPerson: '', phone: '', email: '', address: '', notes: '' };
-                await setDoc(doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName), newCompanyDetails);
+                await setDoc(doc(db, `artifacts/${appId}/users/${currentUserId}/companyDetails`, companyName), newCompanyDetails);
                 console.log("Company added:", companyName);
             } catch (e) {
                 console.error("Error adding company: ", e);
@@ -678,8 +662,8 @@
             const confirmed = await showConfirmationModal("Confirm Deletion", `Delete '${companyName}' and ALL its tasks? This cannot be undone.`);
             if (confirmed) {
                 try {
-                    // 1. Delete company details (public)
-                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/companyDetails`, companyName));
+                    // 1. Delete company details (private)
+                    await deleteDoc(doc(db, `artifacts/${appId}/users/${currentUserId}/companyDetails`, companyName));
                     console.log(`Company details for '${companyName}' deleted.`);
                     
                     // 2. Delete associated tasks for the current user (private)
@@ -709,6 +693,8 @@
         // --- 6. UI RENDERING & VIEW LOGIC ---
 
         function renderUI() {
+            if (!currentUserId) return; // Don't render main UI if not logged in
+
             contentBlocks.forEach(block => block.classList.add('hidden'));
             sidebarLinks.forEach(link => link.classList.remove('active'));
 
@@ -1112,9 +1098,31 @@
             });
         });
 
-        // Auth modal listeners
-        loginBtn.addEventListener('click', () => openAuthModal('login'));
-        signupBtn.addEventListener('click', () => openAuthModal('signup'));
+        // Auth form listeners
+        loginSubmitBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = authEmailInput.value;
+            const password = authPasswordInput.value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+            } catch (error) {
+                console.error("Login error:", error);
+                showConfirmationModal("Login Failed", error.message);
+            }
+        });
+
+        signupSubmitBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = authEmailInput.value;
+            const password = authPasswordInput.value;
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+            } catch (error) {
+                console.error("Sign up error:", error);
+                showConfirmationModal("Sign Up Failed", error.message);
+            }
+        });
+        
         logoutBtn.addEventListener('click', async () => {
             const confirmed = await showConfirmationModal("Confirm Logout", "Are you sure you want to log out?");
             if (confirmed) {
@@ -1127,26 +1135,6 @@
             }
         });
 
-        authForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = authEmailInput.value;
-            const password = authPasswordInput.value;
-            try {
-                if (currentAuthMode === 'login') {
-                    await signInWithEmailAndPassword(auth, email, password);
-                } else {
-                    await createUserWithEmailAndPassword(auth, email, password);
-                }
-                closeAuthModal();
-            } catch (error) {
-                console.error("Authentication error:", error);
-                let userMessage = error.message;
-                if (error.code === 'auth/operation-not-allowed') {
-                    userMessage = "Operation not allowed. Please ensure that Email/Password and Anonymous sign-in providers are enabled in your Firebase console's Authentication settings.";
-                }
-                showConfirmationModal("Authentication Failed", userMessage);
-            }
-        });
         
         // Sidebar listeners
         sidebarLinks.forEach(link => {
@@ -1195,28 +1183,6 @@
         }
         cancelEditTaskBtn.addEventListener('click', resetTaskForm);
 
-        function openAuthModal(mode) {
-            currentAuthMode = mode;
-            authModalTitle.textContent = mode === 'login' ? 'Login' : 'Sign Up';
-            authSubmitBtn.textContent = mode === 'login' ? 'Login' : 'Sign Up';
-            authForm.reset();
-            authModal.style.display = 'flex';
-        }
-
-        function closeAuthModal() {
-            authModal.style.display = 'none';
-        }
-        authModalCloseButton.addEventListener('click', closeAuthModal);
-        dayModalCloseBtn.addEventListener('click', () => dayDetailModal.style.display = 'none');
-
-
-        function showLoginPrompt(action) {
-            showConfirmationModal("Authentication Required", `Please log in to ${action}.`).then(confirmed => {
-                if (confirmed) openAuthModal('login');
-            });
-            return false; // To indicate failure
-        }
-
         function showConfirmationModal(title, message) {
             return new Promise(resolve => {
                 modalTitle.textContent = title;
@@ -1258,7 +1224,6 @@
 
         // Close modals on outside click
         window.addEventListener('click', (event) => {
-            if (event.target == authModal) closeAuthModal();
             if (event.target == confirmationModal) confirmationModal.style.display = 'none';
             if (event.target == dayDetailModal) dayDetailModal.style.display = 'none';
         });
