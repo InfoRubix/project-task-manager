@@ -113,9 +113,19 @@
                         <label class="block text-sm font-medium text-gray-700">Email</label>
                         <input type="email" id="auth-email" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
                     </div>
-                    <div>
+                    <div class="relative">
                         <label class="block text-sm font-medium text-gray-700">Password</label>
                         <input type="password" id="auth-password" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+                        <button type="button" id="toggle-password-visibility" class="absolute inset-y-0 right-0 pr-3 flex items-center text-sm leading-5 pt-5">
+                            <svg id="eye-icon" class="h-6 w-6 text-gray-700" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <svg id="eye-off-icon" class="h-6 w-6 text-gray-700 hidden" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7 1.274-4.057 5.064-7 9.542-7 .847 0 1.67.127 2.454.364m-6.082 11.45a1 1 0 01-1.414-1.414l1.414-1.414a1 1 0 011.414 1.414l-1.414 1.414zM12 10.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 4.75l-16.25 16.25" />
+                            </svg>
+                        </button>
                     </div>
                     <div class="flex flex-col sm:flex-row gap-2 pt-2">
                         <button type="submit" id="login-submit-btn" class="flex-1 px-6 py-2 bg-indigo-600 text-white rounded-lg w-full hover:bg-indigo-700 transition-all">Login</button>
@@ -494,6 +504,9 @@
         const sidebar = document.getElementById('sidebar');
         const hamburgerBtn = document.getElementById('hamburger-btn');
         const sidebarCompanyList = document.getElementById('sidebar-company-list');
+        const togglePasswordVisibilityBtn = document.getElementById('toggle-password-visibility');
+        const eyeIcon = document.getElementById('eye-icon');
+        const eyeOffIcon = document.getElementById('eye-off-icon');
 
         // --- 4. AUTHENTICATION & APP STARTUP ---
 
@@ -1226,6 +1239,13 @@
         window.addEventListener('click', (event) => {
             if (event.target == confirmationModal) confirmationModal.style.display = 'none';
             if (event.target == dayDetailModal) dayDetailModal.style.display = 'none';
+        });
+
+        togglePasswordVisibilityBtn.addEventListener('click', () => {
+            const isPassword = authPasswordInput.type === 'password';
+            authPasswordInput.type = isPassword ? 'text' : 'password';
+            eyeIcon.classList.toggle('hidden', isPassword);
+            eyeOffIcon.classList.toggle('hidden', !isPassword);
         });
 
         // Kick off the application
